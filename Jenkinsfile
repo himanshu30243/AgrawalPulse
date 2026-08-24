@@ -9,19 +9,15 @@ pipeline {
     buildDiscarder(logRotator(numToKeepStr: '10'))
     timeout(time: 60, unit: 'MINUTES')
     timestamps()
+    disableConcurrentBuilds()
   }
 
   environment {
     // Docker Registry Configuration
-    DOCKER_REGISTRY = credentials('docker-registry-credentials')  // Set in Jenkins: username + password
-    DOCKER_REGISTRY_URL = 'docker.io'  // Change to your registry (ECR, DockerHub, etc)
-    DOCKER_IMAGE_PREFIX = 'himanshu30243'  // Your DockerHub username
+    DOCKER_REGISTRY_URL = 'docker.io'
+    DOCKER_IMAGE_PREFIX = 'himanshu30243'
 
-    // Maven & Java
-    JAVA_VERSION = '21'
-    MAVEN_VERSION = '3.9.0'
-
-    // Git
+    // Git commit info
     GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
     BUILD_TAG = "${BUILD_NUMBER}-${GIT_COMMIT_SHORT}"
   }
@@ -104,43 +100,24 @@ pipeline {
 
     stage('Build Docker Images') {
       when {
-        branch 'main'  // Only build images on main branch
-      }
-      steps {
-        echo "🐳 Building Docker images for 6 services..."
-        script {
-          def services = [
-            'user-service',
-            'family-service',
-            'membership-service',
-            'matrimony-service',
-            'event-service',
-            'analytics-service'
-          ]
-
-          services.each { service ->
-            dir("backend/${service}") {
-              sh '''
-                echo "Building image for ${service}:${BUILD_TAG}..."
-                docker build \
-                  --build-arg BUILD_NUMBER=${BUILD_NUMBER} \
-                  --tag ${DOCKER_IMAGE_PREFIX}/${service}:${BUILD_TAG} \
-                  --tag ${DOCKER_IMAGE_PREFIX}/${service}:latest \
-                  .
-
-                echo "Image built: ${DOCKER_IMAGE_PREFIX}/${service}:${BUILD_TAG}"
-              '''
-            }
-          }
-        }
-      }
-    }
-
-    stage('Build Frontend Docker Image') {
-      when {
         branch 'main'
       }
       steps {
+        echo "🐳 Building Docker images for 6 backend services..."
+        sh '''
+          cd backend
+          for service in user-service family-service membership-service matrimony-service event-service analytics-service; do
+            echo "Building image for $service:${BUILD_TAG}..."
+            cd $service
+            docker build \
+              --build-arg BUILD_NUMBER=${BUILD_NUMBER} \
+              --tag ${DOCKER_IMAGE_PREFIX}/$service:${BUILD_TAG} \
+              --tag ${DOCKER_IMAGE_PREFIX}/$service:latest \
+              .
+            cd ..
+          done
+        '''
+
         echo "🐳 Building frontend Docker image..."
         dir('frontend') {
           sh '''
@@ -160,36 +137,26 @@ pipeline {
         branch 'main'
       }
       steps {
-        echo "📤 Pushing Docker images to registry..."
-        script {
-          withCredentials([usernamePassword(credentialsId: 'docker-registry-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-            sh '''
-              echo "Logging into Docker registry..."
-              echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin ${DOCKER_REGISTRY_URL}
+        echo "📤 Pushing Docker images to Docker Hub..."
+        withCredentials([usernamePassword(credentialsId: 'docker-registry-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh '''
+            echo "Logging into Docker Hub..."
+            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
-              def services = [
-                'user-service',
-                'family-service',
-                'membership-service',
-                'matrimony-service',
-                'event-service',
-                'analytics-service'
-              ]
+            echo "Pushing backend service images..."
+            for service in user-service family-service membership-service matrimony-service event-service analytics-service; do
+              echo "Pushing ${DOCKER_IMAGE_PREFIX}/$service:${BUILD_TAG}..."
+              docker push ${DOCKER_IMAGE_PREFIX}/$service:${BUILD_TAG}
+              docker push ${DOCKER_IMAGE_PREFIX}/$service:latest
+            done
 
-              services.each { service ->
-                echo "Pushing ${service}:${BUILD_TAG}..."
-                docker push ${DOCKER_IMAGE_PREFIX}/${service}:${BUILD_TAG}
-                docker push ${DOCKER_IMAGE_PREFIX}/${service}:latest
-              }
+            echo "Pushing frontend image..."
+            docker push ${DOCKER_IMAGE_PREFIX}/agrawalpulse-frontend:${BUILD_TAG}
+            docker push ${DOCKER_IMAGE_PREFIX}/agrawalpulse-frontend:latest
 
-              echo "Pushing frontend:${BUILD_TAG}..."
-              docker push ${DOCKER_IMAGE_PREFIX}/agrawalpulse-frontend:${BUILD_TAG}
-              docker push ${DOCKER_IMAGE_PREFIX}/agrawalpulse-frontend:latest
-
-              echo "Logging out..."
-              docker logout
-            '''
-          }
+            echo "Logging out..."
+            docker logout
+          '''
         }
       }
     }
@@ -238,25 +205,37 @@ pipeline {
   }
 
   post {
-    always {
-      echo "📝 Cleaning up workspace..."
-      cleanWs()
-    }
-
     success {
       echo "✅ Pipeline succeeded!"
-      // Add Slack/email notification here
-      // slackSend(color: 'good', message: "Build Succeeded: ${env.JOB_NAME} #${env.BUILD_NUMBER}")
+      echo "Docker images built and pushed:"
+      echo "  - ${DOCKER_IMAGE_PREFIX}/<service>:${BUILD_TAG}"
+      echo "  - ${DOCKER_IMAGE_PREFIX}/<service>:latest"
+      // Uncomment below to add Slack notification:
+      // slackSend(
+      //   color: 'good',
+      //   message: "✅ Build Succeeded: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+      //   channel: '#deployments'
+      // )
     }
 
     failure {
       echo "❌ Pipeline failed!"
-      // Add Slack/email notification here
-      // slackSend(color: 'danger', message: "Build Failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}")
+      echo "Check the console output above for error details"
+      // Uncomment below to add Slack notification:
+      // slackSend(
+      //   color: 'danger',
+      //   message: "❌ Build Failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+      //   channel: '#deployments'
+      // )
     }
 
     unstable {
-      echo "⚠️ Pipeline unstable (tests failed)"
+      echo "⚠️ Pipeline unstable - some tests failed"
+    }
+
+    always {
+      echo "🏁 Pipeline execution completed"
+      echo "Build log: ${env.BUILD_URL}console"
     }
   }
 }
