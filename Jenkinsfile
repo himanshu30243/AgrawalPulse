@@ -17,9 +17,9 @@ pipeline {
     DOCKER_REGISTRY_URL = 'docker.io'
     DOCKER_IMAGE_PREFIX = 'himanshu30243'
 
-    // Git commit info
-    GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-    BUILD_TAG = "${BUILD_NUMBER}-${GIT_COMMIT_SHORT}"
+    // Build tag with commit info (BUILD_NUMBER auto-provided by Jenkins)
+    // Note: GIT_COMMIT is a built-in Jenkins variable, use first 7 chars
+    BUILD_TAG = "${BUILD_NUMBER}-${GIT_COMMIT.take(7)}"
   }
 
   stages {
@@ -34,11 +34,11 @@ pipeline {
       steps {
         echo "🔨 Building backend (6 microservices)..."
         dir('backend') {
-          sh '''
-            echo "Maven Version:"
+          bat '''
+            echo Maven Version:
             mvn --version
 
-            echo "Building all services..."
+            echo Building all services...
             mvn clean install -DskipTests=true -U
           '''
         }
@@ -49,15 +49,15 @@ pipeline {
       steps {
         echo "🎨 Building React frontend..."
         dir('frontend') {
-          sh '''
-            echo "Node/NPM Version:"
+          bat '''
+            echo Node/NPM Version:
             node --version
             npm --version
 
-            echo "Installing dependencies..."
+            echo Installing dependencies...
             npm install
 
-            echo "Building production bundle..."
+            echo Building production bundle...
             npm run build
           '''
         }
@@ -68,7 +68,7 @@ pipeline {
       steps {
         echo "✅ Running backend unit tests..."
         dir('backend') {
-          sh '''
+          bat '''
             mvn test -X
           '''
         }
@@ -79,8 +79,8 @@ pipeline {
       steps {
         echo "✅ Running frontend tests..."
         dir('frontend') {
-          sh '''
-            npm run test -- --run 2>&1 || echo "No tests configured yet"
+          bat '''
+            npm run test -- --run || echo No tests configured yet
           '''
         }
       }
@@ -90,9 +90,9 @@ pipeline {
       steps {
         echo "📊 Running code quality checks..."
         dir('backend') {
-          sh '''
-            echo "Running spotbugs (static analysis)..."
-            mvn spotbugs:check || echo "SpotBugs analysis complete"
+          bat '''
+            echo Running spotbugs static analysis...
+            mvn spotbugs:check || echo SpotBugs analysis complete
           '''
         }
       }
@@ -104,30 +104,32 @@ pipeline {
       }
       steps {
         echo "🐳 Building Docker images for 6 backend services..."
-        sh '''
-          cd backend
-          for service in user-service family-service membership-service matrimony-service event-service analytics-service; do
-            echo "Building image for $service:${BUILD_TAG}..."
-            cd $service
-            docker build \
-              --build-arg BUILD_NUMBER=${BUILD_NUMBER} \
-              --tag ${DOCKER_IMAGE_PREFIX}/$service:${BUILD_TAG} \
-              --tag ${DOCKER_IMAGE_PREFIX}/$service:latest \
-              .
-            cd ..
-          done
-        '''
+        script {
+          def services = ['user-service', 'family-service', 'membership-service', 'matrimony-service', 'event-service', 'analytics-service']
+          services.each { service ->
+            dir("backend/${service}") {
+              bat """
+                echo Building image for ${service}:${BUILD_TAG}...
+                docker build ^
+                  --build-arg BUILD_NUMBER=${BUILD_NUMBER} ^
+                  --tag ${DOCKER_IMAGE_PREFIX}/${service}:${BUILD_TAG} ^
+                  --tag ${DOCKER_IMAGE_PREFIX}/${service}:latest ^
+                  .
+              """
+            }
+          }
+        }
 
         echo "🐳 Building frontend Docker image..."
         dir('frontend') {
-          sh '''
-            echo "Building frontend image:${BUILD_TAG}..."
-            docker build \
-              --build-arg BUILD_NUMBER=${BUILD_NUMBER} \
-              --tag ${DOCKER_IMAGE_PREFIX}/agrawalpulse-frontend:${BUILD_TAG} \
-              --tag ${DOCKER_IMAGE_PREFIX}/agrawalpulse-frontend:latest \
+          bat """
+            echo Building frontend image:${BUILD_TAG}...
+            docker build ^
+              --build-arg BUILD_NUMBER=${BUILD_NUMBER} ^
+              --tag ${DOCKER_IMAGE_PREFIX}/agrawalpulse-frontend:${BUILD_TAG} ^
+              --tag ${DOCKER_IMAGE_PREFIX}/agrawalpulse-frontend:latest ^
               .
-          '''
+          """
         }
       }
     }
@@ -139,24 +141,33 @@ pipeline {
       steps {
         echo "📤 Pushing Docker images to Docker Hub..."
         withCredentials([usernamePassword(credentialsId: 'docker-registry-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-          sh '''
-            echo "Logging into Docker Hub..."
-            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+          bat """
+            echo Logging into Docker Hub...
+            docker login -u %DOCKER_USER% -p %DOCKER_PASS%
 
-            echo "Pushing backend service images..."
-            for service in user-service family-service membership-service matrimony-service event-service analytics-service; do
-              echo "Pushing ${DOCKER_IMAGE_PREFIX}/$service:${BUILD_TAG}..."
-              docker push ${DOCKER_IMAGE_PREFIX}/$service:${BUILD_TAG}
-              docker push ${DOCKER_IMAGE_PREFIX}/$service:latest
-            done
+            echo Pushing backend service images...
+            for /L %%i in (1,1,6) do (
+              docker push ${DOCKER_IMAGE_PREFIX}/user-service:${BUILD_TAG}
+              docker push ${DOCKER_IMAGE_PREFIX}/user-service:latest
+              docker push ${DOCKER_IMAGE_PREFIX}/family-service:${BUILD_TAG}
+              docker push ${DOCKER_IMAGE_PREFIX}/family-service:latest
+              docker push ${DOCKER_IMAGE_PREFIX}/membership-service:${BUILD_TAG}
+              docker push ${DOCKER_IMAGE_PREFIX}/membership-service:latest
+              docker push ${DOCKER_IMAGE_PREFIX}/matrimony-service:${BUILD_TAG}
+              docker push ${DOCKER_IMAGE_PREFIX}/matrimony-service:latest
+              docker push ${DOCKER_IMAGE_PREFIX}/event-service:${BUILD_TAG}
+              docker push ${DOCKER_IMAGE_PREFIX}/event-service:latest
+              docker push ${DOCKER_IMAGE_PREFIX}/analytics-service:${BUILD_TAG}
+              docker push ${DOCKER_IMAGE_PREFIX}/analytics-service:latest
+            )
 
-            echo "Pushing frontend image..."
+            echo Pushing frontend image...
             docker push ${DOCKER_IMAGE_PREFIX}/agrawalpulse-frontend:${BUILD_TAG}
             docker push ${DOCKER_IMAGE_PREFIX}/agrawalpulse-frontend:latest
 
-            echo "Logging out..."
+            echo Logging out...
             docker logout
-          '''
+          """
         }
       }
     }
@@ -167,10 +178,10 @@ pipeline {
       }
       steps {
         echo "🚀 Deploying to Dev environment..."
-        sh '''
-          echo "Placeholder: Update ECS task definitions"
-          echo "Placeholder: Deploy to ECS Fargate in dev cluster"
-          echo "For now, this stage is a placeholder"
+        bat '''
+          echo Placeholder: Update ECS task definitions
+          echo Placeholder: Deploy to ECS Fargate in dev cluster
+          echo For now, this stage is a placeholder
         '''
       }
     }
@@ -181,24 +192,17 @@ pipeline {
       }
       steps {
         echo "🧪 Running smoke tests on deployed services..."
-        sh '''
-          echo "Waiting for services to be healthy..."
-          sleep 10
+        bat '''
+          echo Waiting for services to be healthy...
+          timeout /t 10 /nobreak
 
-          echo "Testing health endpoints..."
-          services=(
-            "http://localhost:8081/actuator/health"
-            "http://localhost:8082/actuator/health"
-            "http://localhost:8083/actuator/health"
-            "http://localhost:8084/actuator/health"
-            "http://localhost:8085/actuator/health"
-            "http://localhost:8086/actuator/health"
+          echo Testing health endpoints...
+          for %%i in (8081 8082 8083 8084 8085 8086) do (
+            echo Checking http://localhost:%%i/actuator/health
+            curl -s http://localhost:%%i/actuator/health | findstr "UP" || (
+              echo Service on port %%i may not be ready yet
+            )
           )
-
-          for service in "${services[@]}"; do
-            echo "Checking $service"
-            curl -s $service | grep -q "UP" || echo "Service may not be ready yet"
-          done
         '''
       }
     }
