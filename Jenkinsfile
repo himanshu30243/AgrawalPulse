@@ -36,10 +36,10 @@ pipeline {
         dir('backend') {
           bat '''
             echo Maven Version:
-            mvn --version
+            "C:\\Program Files\\Maven\\apache-maven-3.9.12\\bin\\mvn.cmd" --version
 
             echo Building all services...
-            mvn clean install -DskipTests=true -U
+            "C:\\Program Files\\Maven\\apache-maven-3.9.12\\bin\\mvn.cmd" clean install -DskipTests=true -U
           '''
         }
       }
@@ -70,7 +70,7 @@ pipeline {
         dir('backend') {
           bat '''
             echo Running all available unit tests...
-            mvn test -X
+            "C:\\Program Files\\Maven\\apache-maven-3.9.12\\bin\\mvn.cmd" test -X
 
             echo Test stage completed. Services without tests are still valid.
           '''
@@ -88,7 +88,7 @@ pipeline {
               echo.
               echo ===== Compiling %%S =====
               cd %%S
-              call mvn clean compile -DskipTests=true -q
+              call "C:\\Program Files\\Maven\\apache-maven-3.9.12\\bin\\mvn.cmd" clean compile -DskipTests=true -q
               if errorlevel 1 (
                 echo ❌ FAILED: %%S did not compile
                 exit /b 1
@@ -120,7 +120,7 @@ pipeline {
         dir('backend') {
           bat '''
             echo Running spotbugs static analysis...
-            mvn spotbugs:check || echo SpotBugs analysis complete
+            "C:\\Program Files\\Maven\\apache-maven-3.9.12\\bin\\mvn.cmd" spotbugs:check || echo SpotBugs analysis complete
           '''
         }
       }
