@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: family-service
+  profiles:
+    active: local
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    # Must be lower than this service's first real migration (V1). Six services share one
+    # physical "public" schema (docs/microservices-contract.md), so by the time a later service
+    # runs its first migration here, the schema is no longer empty (earlier services already
+    # created their tables) - baseline-on-migrate then baselines at this version instead of
+    # erroring, and the default baseline-version (1) collides with V1, causing it to be silently
+    # skipped rather than executed. 0 keeps every real migration (V1 onward) in play.
+    baseline-version: 0
+    locations: classpath:db/migration
+    # Distinct per-service history table (docs/microservices-contract.md) so six independent
+    # migration histories can coexist in the one shared Postgres database.
+    table: flyway_schema_history_family
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 2MB
+
+server:
+  port: 8082
+
+agrawalpulse:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  services:
+    user-service:
+      # Used only to enrich family responses with branch (chapter) display info - display-layer
+      # only, never for tenant scoping. Local default targets user-service directly; AWS resolves
+      # via USER_SERVICE_URL (internal service discovery/ALB DNS), never hardcoded there.
+      base-url: ${USER_SERVICE_URL:http://localhost:8081}
+  family:
+    # Local-disk photo storage - fine for local/dev-stage, but NOT durable across container
+    # restarts or shared across replicas. See LocalDiskFamilyPhotoStorage's class comment: prod
+    # needs either an EFS mount for this path or a future S3-backed FamilyPhotoStorage impl
+    # before this is production-ready.
+    photo-storage-dir: ${FAMILY_PHOTO_STORAGE_DIR:./uploads/families-photos}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized

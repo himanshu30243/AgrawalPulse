@@ -1,0 +1,56 @@
+meta {
+  name: Add Family Member
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/families/{{familyId}}/members
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "name": "Priya Agrawal",
+    "relationshipToHead": "DAUGHTER",
+    "dateOfBirth": "2002-11-05",
+    "gender": "FEMALE",
+    "maritalStatus": "SINGLE",
+    "education": "B.Tech",
+    "instituteName": "IIT Indore",
+    "profession": "Software Engineer",
+    "companyName": "TCS",
+    "mobileNumber": "9998887777",
+    "email": "priya.agrawal@example.com",
+    "bloodGroup": "B_POSITIVE"
+  }
+}
+
+script:post-response {
+  if (res.body.id) {
+    bru.setVar("familyMemberId", res.body.id);
+  }
+}
+
+tests {
+  test("status is 200", function () {
+    expect(res.status).to.equal(200);
+  });
+  test("age is auto-calculated, not sent by the client", function () {
+    expect(res.body.age).to.be.a("number");
+  });
+}
+
+docs {
+  Run "Create Family" first so {{familyId}} is set. Requires role ADMIN or CHAPTER_ADMIN - stricter
+  than the list/get member endpoints, which also allow TREASURER and MEMBER.
+}

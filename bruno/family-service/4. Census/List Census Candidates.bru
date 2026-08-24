@@ -1,0 +1,41 @@
+meta {
+  name: List Census Candidates
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/families/census-candidates?chapterId={{chapterId}}
+  body: none
+  auth: bearer
+}
+
+params:query {
+  chapterId: {{chapterId}}
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function () {
+    expect(res.status).to.equal(200);
+  });
+  test("returns a list", function () {
+    expect(res.body).to.be.an("array");
+  });
+  test("no name or contact fields leaked (DPDP minimal-data-exposure)", function () {
+    if (res.body.length > 0) {
+      expect(res.body[0]).to.not.have.property("name");
+      expect(res.body[0]).to.not.have.property("mobileNumber");
+    }
+  });
+}
+
+docs {
+  Requires role ADMIN, CHAPTER_ADMIN, or MATRIMONY_VIEWER - the "Get Dev Token" request in this
+  collection includes MATRIMONY_VIEWER for exactly this reason. This is the fixed internal
+  contract endpoint matrimony-service calls (docs/microservices-contract.md) - deliberately
+  strips name/contact info, only exposes what marriage-readiness filtering needs.
+}

@@ -1,0 +1,30 @@
+# prod profile: real AWS production account. Every endpoint/secret is environment-injected
+# (ECS task definition pulling from Secrets Manager / Parameter Store) - never hardcoded.
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME:agrawalpulse}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${COGNITO_JWK_SET_URI}
+          issuer-uri: ${COGNITO_ISSUER_URI:}
+
+# Swagger UI/OpenAPI JSON are dev/staging conveniences, not something to expose publicly in prod.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+logging:
+  level:
+    com.agrawalpulse: WARN

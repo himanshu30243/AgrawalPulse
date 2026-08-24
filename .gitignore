@@ -1,0 +1,138 @@
+# ========== Frontend (Node.js / Vite / React) ==========
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.env.local
+frontend/.env.*.local
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.DS_Store
+
+# ========== Backend (Java / Maven) ==========
+backend/target/
+backend/**/target/
+backend/**/*.class
+backend/**/*.jar
+backend/**/*.war
+backend/**/*.ear
+backend/**/*.zip
+backend/**/*.tar.gz
+backend/**/*.rar
+backend/**/hs_err_pid*.log
+backend/**/.classpath
+backend/**/.project
+backend/**/.settings/
+backend/**/.springBeans
+backend/**/.sts4-cache/
+
+# ========== IDE & Editor ==========
+.idea/
+.idea_modules/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.vscode-test/
+*.swp
+*.swo
+*~
+.DS_Store
+.AppleDouble
+.LSOverride
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# ========== Environment & Secrets (NEVER commit these) ==========
+.env
+.env.local
+.env.*.local
+.env.prod
+.env.staging
+.env.dev
+application-local.yml
+application-dev.yml
+local.properties
+settings.local.json
+
+# ========== Database & Local Services ==========
+db/
+data/
+postgres/
+redis/
+*.db
+*.sqlite
+*.sqlite3
+
+# ========== Logs ==========
+*.log
+logs/
+log/
+
+# ========== OS-specific ==========
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ========== Temporary Files ==========
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+*~
+.swp
+.swo
+
+# ========== Gradle (if used in future) ==========
+.gradle/
+build/
+gradle.properties
+
+# ========== Docker ==========
+# Keep docker-compose.yml in repo, but exclude local overrides
+docker-compose.override.yml
+
+# ========== Node version files ==========
+.nvmrc
+.node-version
+
+# ========== AWS/Terraform (ignore local state, keep source) ==========
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+.tfvars
+.tfvars.json
+
+# ========== Package Manager Lock Files (optional - decide per team) ==========
+# Uncomment if your team uses lock files:
+# package-lock.json
+# pom.xml.versionsBackup
+
+# ========== IntelliJ IDEA ==========
+out/
+*.iml
+
+# ========== Visual Studio Code settings (keep workspace excluded) ==========
+.vscode/settings.json
+.vscode/launch.json
+
+# ========== Coverage reports ==========
+coverage/
+.coverage
+htmlcov/
+
+# ========== Build output ==========
+dist/
+build/

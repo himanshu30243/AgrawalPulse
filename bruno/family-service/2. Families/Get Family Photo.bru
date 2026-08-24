@@ -1,0 +1,30 @@
+meta {
+  name: Get Family Photo
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/v1/families/{{familyId}}/photo
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function () {
+    expect(res.status).to.equal(200);
+  });
+  test("content-type is an image type", function () {
+    expect(res.headers["content-type"]).to.match(/^image\//);
+  });
+}
+
+docs {
+  Run "Upload Family Photo" first - this 404s (via ResourceNotFoundException, not a generic 500)
+  if no photo has been uploaded for {{familyId}} yet. Same tenant check as every other
+  family-scoped read: 404 both when the family doesn't exist and when it belongs to another chapter.
+}

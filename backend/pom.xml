@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.4</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.agrawalpulse</groupId>
+    <artifactId>agrawalpulse-backend</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <name>agrawalpulse-backend</name>
+    <description>AgrawalPulse backend - microservices reactor (see docs/microservices-contract.md)</description>
+    <packaging>pom</packaging>
+
+    <modules>
+        <module>common</module>
+        <module>user-service</module>
+        <module>family-service</module>
+        <module>membership-service</module>
+        <module>matrimony-service</module>
+        <module>event-service</module>
+        <module>analytics-service</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <awssdk.version>2.28.11</awssdk.version>
+        <lombok.version>1.18.38</lombok.version>
+        <springdoc.version>2.6.0</springdoc.version>
+        <!-- Spring Boot 3.3.4's managed mockito-core (5.11.0, byte-buddy 1.14.19) predates JDK 25
+             and can't instrument classes on it at all ("Byte Buddy could not instrument all
+             classes"). Overriding the BOM-managed version is the standard fix until the parent
+             POM itself is upgraded past a Boot line that ships a JDK-25-aware Mockito. -->
+        <mockito.version>5.14.2</mockito.version>
+    </properties>
+
+    <!-- Version management only - no service inherits actual dependencies from here beyond
+         what spring-boot-starter-parent already provides. Each service pom still declares
+         its own <dependencies>, but never needs to repeat a <version>. -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.agrawalpulse</groupId>
+                <artifactId>common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>sns</artifactId>
+                <version>${awssdk.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <annotationProcessorPaths>
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                                <version>${lombok.version}</version>
+                            </path>
+                        </annotationProcessorPaths>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <configuration>
+                        <excludes>
+                            <exclude>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                            </exclude>
+                        </excludes>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <!-- Belt-and-suspenders alongside the mockito.version bump above: tells
+                         ByteBuddy to attempt instrumentation even on a JDK class-file version it
+                         doesn't explicitly recognize as supported yet, instead of refusing outright. -->
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration>
+                        <argLine>-Dnet.bytebuddy.experimental=true</argLine>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

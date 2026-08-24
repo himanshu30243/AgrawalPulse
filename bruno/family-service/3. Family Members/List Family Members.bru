@@ -1,0 +1,29 @@
+meta {
+  name: List Family Members
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/families/{{familyId}}/members
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function () {
+    expect(res.status).to.equal(200);
+  });
+  test("returns a list", function () {
+    expect(res.body).to.be.an("array");
+  });
+}
+
+docs {
+  Run "Create Family" then "Add Family Member" first. This is the "Population Census" /
+  "Family Tree" read path - member relationship-to-head, age, and full census fields.
+}

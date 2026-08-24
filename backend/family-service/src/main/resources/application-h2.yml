@@ -1,0 +1,28 @@
+# Temporary local-testing convenience ONLY - not a real environment (no Terraform/AWS target
+# uses this). Activate alongside "local" (-Dspring-boot.run.profiles=local,h2) so the local JWT
+# issuer and CORS config still apply; this profile only overrides the datasource to an in-memory
+# H2 instance in PostgreSQL-compatibility mode, so nobody has to wait on Postgres/Docker to
+# exercise the API via Swagger or Bruno. Data is lost on every restart - that's expected.
+spring:
+  datasource:
+    # DB_CLOSE_DELAY=-1 keeps the in-memory DB alive for the JVM's lifetime, not just while one
+    # pooled connection happens to be open.
+    url: jdbc:h2:mem:agrawalpulse;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  # V1__init.sql is hand-written Postgres DDL (TIMESTAMPTZ, etc.) - H2 doesn't parse that dialect
+  # even in PostgreSQL-compatibility mode. For this throwaway profile only, skip Flyway and let
+  # Hibernate generate the schema straight from the JPA entities instead (dialect-aware, so this
+  # sidesteps the issue entirely) - never do this for local/dev/staging/prod, where Flyway
+  # against the real migration file is the actual source of truth.
+  flyway:
+    enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+  h2:
+    console:
+      enabled: true
+      path: /h2-console

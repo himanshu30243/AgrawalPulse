@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: user-service
+  profiles:
+    active: local
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    # Must be lower than this service's first real migration (V1). Six services share one
+    # physical "public" schema (docs/microservices-contract.md); if this service ever migrates
+    # after another one has already created tables there, baseline-on-migrate baselines instead
+    # of erroring, and the default baseline-version (1) would collide with and skip V1. 0 keeps
+    # every real migration in play regardless of start order.
+    baseline-version: 0
+    locations: classpath:db/migration
+    table: flyway_schema_history_user
+
+server:
+  port: 8081
+
+agrawalpulse:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized

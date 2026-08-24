@@ -1,0 +1,41 @@
+meta {
+  name: Create Family - Missing Required Field
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/v1/families
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "district": "Indore"
+  }
+}
+
+tests {
+  test("status is 400", function () {
+    expect(res.status).to.equal(400);
+  });
+  test("error mentions headFirstName", function () {
+    expect(res.body.details.join(",")).to.include("headFirstName");
+  });
+}
+
+docs {
+  Negative-path check: an (almost) empty body fails Bean Validation on many required fields at
+  once now (headFirstName, headLastName, headGender, headDateOfBirth, mobileNumber, address,
+  country, state, district, areaLocality, pinCode, samaj, gotra, nativePlace) - this just asserts
+  headFirstName's error is present somewhere in the details list, not that it's the only one.
+}

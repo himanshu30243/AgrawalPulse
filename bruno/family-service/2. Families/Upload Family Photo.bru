@@ -1,0 +1,33 @@
+meta {
+  name: Upload Family Photo
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/v1/families/{{familyId}}/photo
+  body: multipartForm
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:multipart-form {
+  file: @file(./fixtures/sample-photo.jpg)
+}
+
+tests {
+  test("status is 200", function () {
+    expect(res.status).to.equal(200);
+  });
+}
+
+docs {
+  Requires role ADMIN or CHAPTER_ADMIN. Run "Create Family" first so {{familyId}} is set. Accepts
+  JPG/JPEG/PNG only, max 2MB (spring.servlet.multipart.max-file-size + FamilyServiceImpl's own
+  content-type/size check) - a mismatched type or oversized file 400s, never 500s. Bruno needs a
+  real file at bruno/family-service/fixtures/sample-photo.jpg for the `@file(...)` reference to
+  resolve; swap the path to any small local JPG/PNG if that fixture isn't present.
+}

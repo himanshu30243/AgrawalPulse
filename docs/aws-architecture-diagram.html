@@ -1,0 +1,320 @@
+<title>AgrawalPulse — AWS Architecture</title>
+<style>
+  :root {
+    --ink: #14181f;
+    --paper: #f5f6f8;
+    --slate: #5b6472;
+    --line: #c9ced7;
+    --panel: #ffffff;
+    --accent: #c97a1f;
+    --accent-soft: #f4e3cd;
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --disp: "Bahnschrift", "DIN Alternate", "Arial Narrow", var(--sans);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #e9ebef;
+      --paper: #14171d;
+      --slate: #9aa3b2;
+      --line: #343b46;
+      --panel: #1b1f27;
+      --accent: #e5a04a;
+      --accent-soft: #3a2c15;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #e9ebef;
+    --paper: #14171d;
+    --slate: #9aa3b2;
+    --line: #343b46;
+    --panel: #1b1f27;
+    --accent: #e5a04a;
+    --accent-soft: #3a2c15;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    margin: 0;
+    padding: 40px 24px 64px;
+  }
+  main { max-width: 1180px; margin: 0 auto; }
+
+  header { margin-bottom: 28px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--slate);
+    margin: 0 0 8px;
+  }
+  h1 {
+    font-family: var(--disp);
+    font-weight: 700;
+    font-size: clamp(28px, 4vw, 40px);
+    letter-spacing: 0.01em;
+    text-wrap: balance;
+    margin: 0 0 10px;
+  }
+  .subtitle {
+    max-width: 68ch;
+    color: var(--slate);
+    font-size: 15px;
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin: 22px 0 8px;
+    padding: 12px 16px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    font-size: 12.5px;
+    color: var(--slate);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .swatch { width: 22px; height: 0; border-top: 2px solid var(--ink); display: inline-block; }
+  .swatch.dashed { border-top-style: dashed; }
+  .swatch.accent { border-top-color: var(--accent); border-top-width: 3px; }
+
+  figure { margin: 40px 0 8px; }
+  .diagram-frame {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 18px;
+    overflow-x: auto;
+  }
+  svg { display: block; width: 100%; height: auto; max-width: 100%; }
+  figcaption {
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--slate);
+    max-width: 78ch;
+    line-height: 1.5;
+  }
+
+  .box-fill { fill: var(--panel); }
+  .box-stroke { stroke: var(--ink); stroke-width: 1.4; }
+  .box-title { font-family: var(--sans); font-weight: 600; font-size: 15px; fill: var(--ink); }
+  .box-sub { font-family: var(--mono); font-size: 10.5px; fill: var(--slate); }
+  .arrow-line { stroke: var(--ink); stroke-width: 1.4; fill: none; }
+  .arrow-line.dashed { stroke-dasharray: 5 4; }
+  .arrow-line.accent { stroke: var(--accent); stroke-width: 2; }
+  .arrow-label { font-family: var(--mono); font-size: 10.5px; fill: var(--slate); }
+  .arrow-label.accent { fill: var(--accent); }
+  .col-head { font-family: var(--disp); font-size: 14px; font-weight: 700; fill: var(--ink); letter-spacing: 0.02em; }
+
+  footer {
+    margin-top: 48px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    font-size: 12.5px;
+    color: var(--slate);
+  }
+  footer code { font-family: var(--mono); background: var(--accent-soft); padding: 1px 5px; border-radius: 3px; }
+</style>
+
+<main>
+  <header>
+    <p class="eyebrow">AgrawalPulse · Deliverable 3 of 10 — AWS Architecture Diagram</p>
+    <h1>Request path, data tier, and the DPDP consent boundary</h1>
+    <p class="subtitle">
+      Single-region deployment (<code style="font-family: var(--mono)">ap-south-1</code>), six independently-deployed
+      microservices on ECS Fargate sharing one Aurora instance, sized for the 3-year horizon of ~150 chapters /
+      ~225,000 families. Full rationale in <code style="font-family: var(--mono)">docs/microservices-contract.md</code>.
+    </p>
+  </header>
+
+  <div class="legend">
+    <span><span class="swatch"></span> synchronous request/response</span>
+    <span><span class="swatch dashed"></span> async / eventually-consistent</span>
+    <span><span class="swatch accent"></span> DPDP consent-gated path (matrimony data)</span>
+  </div>
+
+  <figure>
+    <div class="diagram-frame">
+      <svg viewBox="0 0 1200 620" role="img" aria-label="Client traffic through API Gateway fanning out to six independent microservices, three of which call family-service over REST, all sharing one Aurora instance with service-owned tables, plus DynamoDB, Redis and OpenSearch used by specific services.">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+          </marker>
+        </defs>
+
+        <!-- Client -->
+        <rect x="350" y="20" width="500" height="60" rx="6" class="box-fill box-stroke"/>
+        <text x="600" y="45" text-anchor="middle" class="box-title">Members &amp; Admins</text>
+        <text x="600" y="63" text-anchor="middle" class="box-sub">mobile · laptop — responsive SPA</text>
+
+        <!-- Edge -->
+        <rect x="30" y="140" width="220" height="70" rx="6" class="box-fill box-stroke"/>
+        <text x="140" y="168" text-anchor="middle" class="box-title">CloudFront + S3</text>
+        <text x="140" y="186" text-anchor="middle" class="box-sub">static frontend bundle</text>
+
+        <rect x="280" y="140" width="890" height="70" rx="6" class="box-fill box-stroke"/>
+        <text x="725" y="168" text-anchor="middle" class="box-title">API Gateway</text>
+        <text x="725" y="186" text-anchor="middle" class="box-sub">Cognito JWT authorizer · WAF · path-routes to 6 services</text>
+
+        <line x1="500" y1="80" x2="150" y2="140" class="arrow-line" marker-end="url(#arrow)"/>
+        <text x="180" y="118" class="arrow-label">loads app</text>
+
+        <line x1="700" y1="80" x2="720" y2="140" class="arrow-line" marker-end="url(#arrow)"/>
+        <text x="725" y="118" class="arrow-label">HTTPS + Bearer JWT</text>
+
+        <!-- Service row: 6 independently-deployed services -->
+        <line x1="725" y1="210" x2="120" y2="270" class="arrow-line"/>
+        <line x1="725" y1="210" x2="312" y2="270" class="arrow-line"/>
+        <line x1="725" y1="210" x2="504" y2="270" class="arrow-line"/>
+        <line x1="725" y1="210" x2="696" y2="270" class="arrow-line"/>
+        <line x1="725" y1="210" x2="888" y2="270" class="arrow-line"/>
+        <line x1="725" y1="210" x2="1080" y2="270" class="arrow-line" marker-end="url(#arrow)"/>
+        <text x="740" y="245" class="arrow-label">/api/v1/{module} → matching service</text>
+
+        <rect x="30" y="270" width="180" height="70" rx="6" class="box-fill box-stroke"/>
+        <text x="120" y="298" text-anchor="middle" class="box-title" style="font-size:13.5px">user-service</text>
+        <text x="120" y="315" text-anchor="middle" class="box-sub">:8081 · chapters, users</text>
+
+        <rect x="222" y="270" width="180" height="70" rx="6" class="box-fill box-stroke"/>
+        <text x="312" y="298" text-anchor="middle" class="box-title" style="font-size:13.5px">family-service</text>
+        <text x="312" y="315" text-anchor="middle" class="box-sub">:8082 · families, members</text>
+
+        <rect x="414" y="270" width="180" height="70" rx="6" class="box-fill box-stroke"/>
+        <text x="504" y="298" text-anchor="middle" class="box-title" style="font-size:13.5px">membership-service</text>
+        <text x="504" y="315" text-anchor="middle" class="box-sub">:8083 · dues, payments</text>
+
+        <rect x="606" y="270" width="180" height="70" rx="6" class="box-fill" style="stroke:var(--accent);stroke-width:2"/>
+        <text x="696" y="298" text-anchor="middle" class="box-title" style="font-size:13.5px">matrimony-service</text>
+        <text x="696" y="315" text-anchor="middle" class="box-sub">:8084 · consent-gated</text>
+
+        <rect x="798" y="270" width="180" height="70" rx="6" class="box-fill box-stroke"/>
+        <text x="888" y="298" text-anchor="middle" class="box-title" style="font-size:13.5px">event-service</text>
+        <text x="888" y="315" text-anchor="middle" class="box-sub">:8085 · events, RSVPs</text>
+
+        <rect x="990" y="270" width="180" height="70" rx="6" class="box-fill box-stroke"/>
+        <text x="1080" y="298" text-anchor="middle" class="box-title" style="font-size:13.5px">analytics-service</text>
+        <text x="1080" y="315" text-anchor="middle" class="box-sub">:8086 · read-only</text>
+
+        <!-- Inter-service REST calls, JWT pass-through -->
+        <line x1="414" y1="305" x2="404" y2="305" class="arrow-line" marker-end="url(#arrow)"/>
+        <text x="330" y="330" class="arrow-label">GET /families/{id}</text>
+
+        <polyline points="696,340 696,358 312,358 312,340" class="arrow-line accent" marker-end="url(#arrow)"/>
+        <text x="330" y="353" class="arrow-label accent">GET /families/census-candidates</text>
+
+        <polyline points="888,340 888,376 312,376 312,340" class="arrow-line dashed" marker-end="url(#arrow)"/>
+        <text x="600" y="393" class="arrow-label">GET /families/{id} (event RSVP check)</text>
+
+        <!-- Shared database -->
+        <line x1="600" y1="340" x2="600" y2="428" class="arrow-line" marker-end="url(#arrow)"/>
+        <text x="608" y="412" class="arrow-label">reads/writes own tables</text>
+
+        <rect x="280" y="430" width="640" height="60" rx="6" class="box-fill box-stroke"/>
+        <text x="600" y="455" text-anchor="middle" class="box-title">Aurora PostgreSQL — one shared instance</text>
+        <text x="600" y="473" text-anchor="middle" class="box-sub">service-owned tables · no cross-service FKs</text>
+
+        <!-- Service-specific stores -->
+        <rect x="60" y="530" width="280" height="70" rx="6" class="box-fill box-stroke"/>
+        <text x="200" y="563" text-anchor="middle" class="box-title">DynamoDB</text>
+        <text x="200" y="581" text-anchor="middle" class="box-sub">audit log (matrimony) · session (user)</text>
+
+        <rect x="400" y="530" width="280" height="70" rx="6" class="box-fill box-stroke"/>
+        <text x="540" y="563" text-anchor="middle" class="box-title">ElastiCache Redis</text>
+        <text x="540" y="581" text-anchor="middle" class="box-sub">analytics-service cache-aside</text>
+
+        <rect x="740" y="530" width="280" height="70" rx="6" class="box-fill" style="stroke:var(--accent);stroke-width:2"/>
+        <text x="880" y="563" text-anchor="middle" class="box-title">OpenSearch</text>
+        <text x="880" y="581" text-anchor="middle" class="box-sub">matrimony-service index only</text>
+
+        <polyline points="350,490 350,510 200,510 200,530" class="arrow-line dashed" marker-end="url(#arrow)"/>
+        <polyline points="1080,340 1080,505 540,505 540,530" class="arrow-line dashed" marker-end="url(#arrow)"/>
+        <polyline points="696,340 696,500 880,500 880,530" class="arrow-line accent" marker-end="url(#arrow)"/>
+      </svg>
+    </div>
+    <figcaption>
+      Figure 1. API Gateway path-routes to six independently-deployed services instead of one. Most cross-service reads
+      are synchronous REST calls to <code style="font-family: var(--mono)">family-service</code>, forwarding the caller's
+      JWT rather than a separate service identity. All six share one Aurora instance, but a foreign key never crosses a
+      service-ownership boundary — cross-service references are plain indexed columns, validated by the REST calls shown
+      above, not by the database. The matrimony path (accent) is the one place a consent check gates the data at every
+      hop. <code style="font-family: var(--mono)">analytics-service</code> is the sole exception allowed to read other
+      services' tables directly, since it's a read-only reporting service, not a domain service.
+    </figcaption>
+  </figure>
+
+  <figure>
+    <div class="diagram-frame">
+      <svg viewBox="0 0 1000 500" role="img" aria-label="Six rows mapping each local Docker Compose service to its AWS managed-service counterpart, same Spring profile boundary on both sides.">
+        <text x="250" y="34" text-anchor="middle" class="col-head">Local — Docker Compose</text>
+        <text x="750" y="34" text-anchor="middle" class="col-head">AWS — managed services</text>
+
+        <g>
+          <rect x="60" y="70" width="380" height="55" rx="5" class="box-fill box-stroke"/>
+          <text x="250" y="103" text-anchor="middle" class="box-title" style="font-size:13.5px">postgres container</text>
+          <rect x="560" y="70" width="380" height="55" rx="5" class="box-fill box-stroke"/>
+          <text x="750" y="103" text-anchor="middle" class="box-title" style="font-size:13.5px">Aurora PostgreSQL (Multi-AZ)</text>
+          <line x1="440" y1="97.5" x2="560" y2="97.5" class="arrow-line dashed"/>
+        </g>
+        <g>
+          <rect x="60" y="140" width="380" height="55" rx="5" class="box-fill box-stroke"/>
+          <text x="250" y="173" text-anchor="middle" class="box-title" style="font-size:13.5px">redis container</text>
+          <rect x="560" y="140" width="380" height="55" rx="5" class="box-fill box-stroke"/>
+          <text x="750" y="173" text-anchor="middle" class="box-title" style="font-size:13.5px">ElastiCache Redis</text>
+          <line x1="440" y1="167.5" x2="560" y2="167.5" class="arrow-line dashed"/>
+        </g>
+        <g>
+          <rect x="60" y="210" width="380" height="55" rx="5" class="box-fill box-stroke"/>
+          <text x="250" y="243" text-anchor="middle" class="box-title" style="font-size:13.5px">dynamodb-local container</text>
+          <rect x="560" y="210" width="380" height="55" rx="5" class="box-fill box-stroke"/>
+          <text x="750" y="243" text-anchor="middle" class="box-title" style="font-size:13.5px">DynamoDB</text>
+          <line x1="440" y1="237.5" x2="560" y2="237.5" class="arrow-line dashed"/>
+        </g>
+        <g>
+          <rect x="60" y="280" width="380" height="55" rx="5" class="box-fill" style="stroke:var(--accent);stroke-width:2"/>
+          <text x="250" y="313" text-anchor="middle" class="box-title" style="font-size:13.5px">opensearch container</text>
+          <rect x="560" y="280" width="380" height="55" rx="5" class="box-fill" style="stroke:var(--accent);stroke-width:2"/>
+          <text x="750" y="313" text-anchor="middle" class="box-title" style="font-size:13.5px">OpenSearch</text>
+          <line x1="440" y1="307.5" x2="560" y2="307.5" class="arrow-line accent"/>
+        </g>
+        <g>
+          <rect x="60" y="350" width="380" height="55" rx="5" class="box-fill box-stroke"/>
+          <text x="250" y="383" text-anchor="middle" class="box-title" style="font-size:13.5px">LocalStack — S3/SNS/SES/EventBridge</text>
+          <rect x="560" y="350" width="380" height="55" rx="5" class="box-fill box-stroke"/>
+          <text x="750" y="383" text-anchor="middle" class="box-title" style="font-size:13.5px">S3 + SNS + SES + EventBridge</text>
+          <line x1="440" y1="377.5" x2="560" y2="377.5" class="arrow-line dashed"/>
+        </g>
+        <g>
+          <rect x="60" y="420" width="380" height="55" rx="5" class="box-fill box-stroke"/>
+          <text x="250" y="453" text-anchor="middle" class="box-title" style="font-size:13.5px">local dev JWT issuer</text>
+          <rect x="560" y="420" width="380" height="55" rx="5" class="box-fill box-stroke"/>
+          <text x="750" y="453" text-anchor="middle" class="box-title" style="font-size:13.5px">Cognito User Pool</text>
+          <line x1="440" y1="447.5" x2="560" y2="447.5" class="arrow-line dashed"/>
+        </g>
+      </svg>
+    </div>
+    <figcaption>
+      Figure 2. Every row is the same Spring interface with two implementations, selected by Spring profile
+      (<code style="font-family: var(--mono)">local</code> vs <code style="font-family: var(--mono)">dev/staging/prod</code>) —
+      application code never branches by environment. The OpenSearch row is accented because it's also the row carrying the
+      DPDP consent gate: the matrimony index is populated identically in both environments, only from consented records.
+      This mapping applies identically underneath all six services in Figure 1 — each connects to the same shared Postgres
+      and, where relevant, the same Redis/OpenSearch, whether running as a container in <code style="font-family: var(--mono)">docker-compose.yml</code>
+      or as an ECS Fargate task. Locally, an <code style="font-family: var(--mono)">nginx</code> container plays API
+      Gateway's role, path-routing one base URL to all six service containers so the frontend never has to know six
+      services exist.
+    </figcaption>
+  </figure>
+
+  <footer>
+    Companion documents: <code>HLD.md</code> · <code>LLD.md</code> · <code>database-schema.md</code> ·
+    <code>api-specifications.md</code> · <code>security-design.md</code> · <code>deployment-architecture.md</code> ·
+    <code>cost-optimization.md</code> · <code>ai-roadmap.md</code>
+  </footer>
+</main>

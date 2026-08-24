@@ -1,0 +1,77 @@
+meta {
+  name: Create Family
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/families
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "headFirstName": "Ramesh",
+    "headMiddleName": "Kumar",
+    "headLastName": "Agrawal",
+    "familyName": "Agrawal",
+    "headGender": "MALE",
+    "headDateOfBirth": "1975-03-14",
+    "mobileNumber": "9876543210",
+    "email": "ramesh.agrawal@example.com",
+    "aadhaarNumber": "123456789012",
+    "address": "12 MG Road",
+    "country": "India",
+    "state": "Madhya Pradesh",
+    "district": "Indore",
+    "areaLocality": "Vijay Nagar",
+    "pinCode": "452010",
+    "samaj": "AGRAWAL",
+    "gotra": "Garg",
+    "nativePlace": "Ujjain",
+    "occupationBusinessType": "Textile Business",
+    "annualIncomeRange": "10-25 Lakh",
+    "familyCategory": "BUSINESS",
+    "ownTwoWheeler": true,
+    "ownFourWheeler": true,
+    "ownHome": true,
+    "ownPlot": false,
+    "willingToContribute": true
+  }
+}
+
+script:post-response {
+  if (res.body.id) {
+    bru.setVar("familyId", res.body.id);
+  }
+}
+
+tests {
+  test("status is 200", function () {
+    expect(res.status).to.equal(200);
+  });
+  test("returns a generated familyCode", function () {
+    expect(res.body.familyCode).to.match(/^FAM-[A-Z0-9]{8}$/);
+  });
+  test("chapterId matches what we asked for", function () {
+    expect(res.body.chapterId).to.equal(bru.getVar("chapterId"));
+  });
+}
+
+docs {
+  Requires role ADMIN or CHAPTER_ADMIN. Required fields mirror frontend/docs/family-registration.md's
+  wizard steps 1-3: headFirstName, headLastName, headGender, headDateOfBirth, mobileNumber (also
+  globally unique), address, country, state, district, areaLocality, pinCode, samaj, gotra,
+  nativePlace. Everything else (Step 4 - financial/social) is optional. `headOfFamilyName` and
+  `city` are server-computed/derived - not accepted in the request even though they appear in the
+  response. Saves familyId for the requests below it.
+}

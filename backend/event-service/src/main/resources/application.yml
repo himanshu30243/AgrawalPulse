@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: event-service
+  profiles:
+    active: local
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    # Must be lower than this service's first real migration (V1) - see family-service's
+    # application.yml for why: the shared "public" schema is non-empty by the time a later
+    # service migrates, so baseline-on-migrate baselines here, and the default (1) would collide
+    # with and skip V1 otherwise.
+    baseline-version: 0
+    locations: classpath:db/migration
+    table: flyway_schema_history_event
+
+server:
+  port: 8085
+
+agrawalpulse:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  services:
+    family-service:
+      base-url: ${FAMILY_SERVICE_URL:http://localhost:8082}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized

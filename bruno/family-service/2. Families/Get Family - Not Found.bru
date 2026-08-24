@@ -1,0 +1,27 @@
+meta {
+  name: Get Family - Not Found
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/families/00000000-0000-0000-0000-000000000000
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 404", function () {
+    expect(res.status).to.equal(404);
+  });
+}
+
+docs {
+  Negative-path check: a random UUID that was never created should 404, not error - same status
+  code as "exists but belongs to another chapter" (tenant isolation - the two cases must be
+  indistinguishable to the caller).
+}

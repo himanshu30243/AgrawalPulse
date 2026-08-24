@@ -1,0 +1,32 @@
+meta {
+  name: Get Family
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/families/{{familyId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function () {
+    expect(res.status).to.equal(200);
+  });
+  test("branch is enriched (needs user-service running)", function () {
+    // Skips gracefully (branch: null) if user-service isn't up - see BranchClient's
+    // documented graceful-degradation behavior. Not asserted strictly for that reason.
+    expect(res.body).to.have.property("branch");
+  });
+}
+
+docs {
+  Run "Create Family" first so {{familyId}} is set. This is also the fixed contract endpoint
+  membership-service/event-service/matrimony-service call to validate a family exists
+  (see docs/microservices-contract.md) - 404 both when missing and when owned by another chapter.
+}

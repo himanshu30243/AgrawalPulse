@@ -1,0 +1,18 @@
+# Temporary local-testing convenience ONLY - see family-service/src/main/resources/application-h2.yml
+# for the full rationale. Activate alongside "local" (-Dspring-boot.run.profiles=local,h2).
+spring:
+  datasource:
+    url: jdbc:h2:mem:agrawalpulse-user;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  flyway:
+    enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+  h2:
+    console:
+      enabled: true
+      path: /h2-console

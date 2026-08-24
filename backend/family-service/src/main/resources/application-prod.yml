@@ -1,0 +1,42 @@
+# prod profile: real AWS production account. Every endpoint/secret is environment-injected
+# (ECS task definition pulling from Secrets Manager / Parameter Store) - never hardcoded.
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME:agrawalpulse}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${COGNITO_JWK_SET_URI}
+          issuer-uri: ${COGNITO_ISSUER_URI:}
+
+agrawalpulse:
+  aws:
+    sns-topic-arn: ${SNS_TOPIC_ARN:}
+    region: ${AWS_REGION:ap-south-1}
+  # TODO: LocalDiskFamilyPhotoStorage writes here, but ECS tasks have no shared/persistent volume
+  # today - a restart or a second task replica loses/can't see uploaded photos. Needs either an
+  # EFS mount at this path in the task definition, or a new S3-backed FamilyPhotoStorage
+  # implementation (the interface already supports swapping it in without touching
+  # FamilyService/FamilyController) before family photo upload is actually production-ready.
+  family:
+    photo-storage-dir: ${FAMILY_PHOTO_STORAGE_DIR:/data/families-photos}
+
+# Swagger UI/OpenAPI JSON are dev/staging conveniences, not something to expose publicly in prod.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+logging:
+  level:
+    com.agrawalpulse: WARN

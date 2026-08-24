@@ -1,0 +1,29 @@
+meta {
+  name: List Families
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/families
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status is 200", function () {
+    expect(res.status).to.equal(200);
+  });
+  test("returns a list", function () {
+    expect(res.body).to.be.an("array");
+  });
+}
+
+docs {
+  Accessible to ADMIN, CHAPTER_ADMIN, TREASURER, MEMBER - broader read access than the write
+  endpoints. Chapter-scoped from the JWT, never from a query param.
+}

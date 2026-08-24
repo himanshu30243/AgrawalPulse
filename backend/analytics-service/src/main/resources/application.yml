@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: analytics-service
+  profiles:
+    active: local
+
+server:
+  port: 8086
+
+agrawalpulse:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  matrimony:
+    readiness:
+      girls-min-age: 21
+      boys-min-age: 24
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized

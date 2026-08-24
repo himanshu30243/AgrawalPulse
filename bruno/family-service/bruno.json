@@ -1,0 +1,6 @@
+{
+  "version": "1",
+  "name": "AgrawalPulse - Family Service",
+  "type": "collection",
+  "ignore": ["node_modules", ".git"]
+}
