@@ -49,14 +49,17 @@ backend/**/.sts4-cache/
 *.sublime-workspace
 
 # ========== Environment & Secrets (NEVER commit these) ==========
+# NOTE: application-local.yml / application-dev.yml are NOT excluded - every service's local
+# and dev profiles are checked in deliberately (see docs/microservices-contract.md) so any
+# clone can `mvn spring-boot:run -Dspring-boot.run.profiles=local` with zero setup. They hold
+# only placeholder dev values (documented as such inline), never real secrets - those only
+# ever come from env vars in application-prod.yml / application-staging.yml.
 .env
 .env.local
 .env.*.local
 .env.prod
 .env.staging
 .env.dev
-application-local.yml
-application-dev.yml
 local.properties
 settings.local.json
 

@@ -1,0 +1,34 @@
+# local profile: laptop development, no AWS account required.
+# Cognito is replaced by the local JWT issuer in security.local (see LocalJwtConfig) -
+# it must NEVER be wired into any other profile.
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/agrawalpulse
+    username: agrawalpulse
+    password: agrawalpulse
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+# Local profile uses ConcurrentMapCacheManager (see CacheConfig), not Redis - but the Redis
+# health indicator still auto-configures from spring-data-redis being on the classpath and
+# reports the whole service DOWN when nothing is listening on 6379. Disable it here only.
+management:
+  health:
+    redis:
+      enabled: false
+
+agrawalpulse:
+  jwt:
+    local:
+      # Dev-only symmetric signing secret. Must match the other services' local secret so a
+      # token minted by any one service's /api/v1/local-auth/token is accepted by all of them -
+      # never reused outside the local profile, never sourced from a real secret store.
+      secret: ${LOCAL_JWT_SECRET:local-dev-only-signing-secret-change-me-1234567890}
+      issuer: agrawalpulse-local
+      token-ttl-minutes: 120
+
+logging:
+  level:
+    com.agrawalpulse: DEBUG

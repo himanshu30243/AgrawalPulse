@@ -1,0 +1,26 @@
+# dev profile: AWS dev account. All infra endpoints and secrets come from the environment
+# (ECS task definition / Secrets Manager injected env vars) - nothing hardcoded here.
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME:agrawalpulse}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${COGNITO_JWK_SET_URI}
+          issuer-uri: ${COGNITO_ISSUER_URI:}
+
+agrawalpulse:
+  aws:
+    sns-topic-arn: ${SNS_TOPIC_ARN:}
+    region: ${AWS_REGION:ap-south-1}
+
+logging:
+  level:
+    com.agrawalpulse: INFO

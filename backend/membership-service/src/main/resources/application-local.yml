@@ -1,0 +1,25 @@
+# local profile: laptop development, no AWS account required.
+# Cognito is replaced by the local JWT issuer in common's security.local package (see
+# LocalJwtConfig) - it must NEVER be wired into any other profile.
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/agrawalpulse
+    username: agrawalpulse
+    password: agrawalpulse
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+
+agrawalpulse:
+  jwt:
+    local:
+      # Dev-only symmetric signing secret. Never reused outside the local profile,
+      # never sourced from a real secret store.
+      secret: ${LOCAL_JWT_SECRET:local-dev-only-signing-secret-change-me-1234567890}
+      issuer: agrawalpulse-local
+      token-ttl-minutes: 120
+
+logging:
+  level:
+    com.agrawalpulse: DEBUG
