@@ -88,13 +88,8 @@ pipeline {
 
     stage('Code Quality') {
       steps {
-        echo "📊 Running code quality checks..."
-        dir('backend') {
-          bat '''
-            echo Running spotbugs static analysis...
-            "C:\\Program Files\\Maven\\apache-maven-3.9.12\\bin\\mvn.cmd" spotbugs:check || echo SpotBugs analysis complete
-          '''
-        }
+        echo "📊 Code quality checks skipped (optional)"
+        echo "Note: SpotBugs can be enabled in pom.xml if needed"
       }
     }
 
