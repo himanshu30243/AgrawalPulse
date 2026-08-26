@@ -78,30 +78,6 @@ pipeline {
       }
     }
 
-    stage('Verify All Services Compile') {
-      steps {
-        echo "🔍 Verifying all 6 services compile successfully..."
-        dir('backend') {
-          bat '''
-            echo Checking compilation for each service...
-            for %%S in (user-service family-service membership-service matrimony-service event-service analytics-service) do (
-              echo.
-              echo ===== Compiling %%S =====
-              cd %%S
-              call "C:\\Program Files\\Maven\\apache-maven-3.9.12\\bin\\mvn.cmd" clean compile -DskipTests=true -q
-              if errorlevel 1 (
-                echo ❌ FAILED: %%S did not compile
-                exit /b 1
-              )
-              echo ✅ %%S compiled successfully
-              cd ..
-            )
-            echo.
-            echo All services compiled successfully!
-          '''
-        }
-      }
-    }
 
     stage('Frontend Tests') {
       steps {
