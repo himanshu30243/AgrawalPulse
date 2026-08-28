@@ -20,6 +20,7 @@
 
     <modules>
         <module>common</module>
+        <module>api-gateway</module>
         <module>user-service</module>
         <module>family-service</module>
         <module>membership-service</module>

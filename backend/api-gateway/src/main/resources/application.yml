@@ -1,0 +1,85 @@
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      default-filters:
+        - name: RequestLoggingGatewayFilterFactory
+          args:
+            enabled: true
+        - name: CircuitBreaker
+          args:
+            name: default-circuit-breaker
+            fallbackUri: forward:/fallback
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOrigins: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - PATCH
+              - OPTIONS
+            allowedHeaders: "*"
+            maxAge: 3600
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+logging:
+  level:
+    root: INFO
+    com.agrawalpulse: DEBUG
+    org.springframework.cloud.gateway: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%-5level] %logger{36} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gatewayroutes,circuitbreakers,retries
+  endpoint:
+    health:
+      show-details: always
+  gateway:
+    enabled: true
+
+# Resilience4j configuration for gateway-level circuit breaker
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 20
+        failureRateThreshold: 50
+        slowCallRateThreshold: 50
+        slowCallDurationThreshold: 2000ms
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 5
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+    instances:
+      default-circuit-breaker:
+        baseConfig: default
+      user-service:
+        baseConfig: default
+      family-service:
+        baseConfig: default
+      membership-service:
+        baseConfig: default
+      matrimony-service:
+        baseConfig: default
+      event-service:
+        baseConfig: default
+      analytics-service:
+        baseConfig: default
+
+  retry:
+    configs:
+      default:
+        maxAttempts: 2
+        waitDuration: 100ms

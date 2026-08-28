@@ -1,0 +1,55 @@
+# API Gateway - Local development profile
+# All 6 microservices expected to run locally on ports 8081-8086
+
+spring:
+  datasource:
+    # Gateway doesn't use database directly - only routes to services that do
+    # If needed for future gateway-specific data (API keys, quotas, etc.)
+    url: jdbc:postgresql://localhost:5432/agrawalpulse
+    username: agrawalpulse
+    password: agrawalpulse
+
+  cloud:
+    sleuth:
+      enabled: true
+      trace-id128: false
+      web:
+        skip-pattern: "^(?!.*actuator).*$|.+\\.js|.+\\.css|.*\\.png"
+
+agrawalpulse:
+  jwt:
+    local:
+      secret: ${LOCAL_JWT_SECRET:local-dev-only-signing-secret-change-me-1234567890}
+      issuer: agrawalpulse-local
+      token-ttl-minutes: 120
+
+logging:
+  level:
+    com.agrawalpulse: DEBUG
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%-5level] %logger{36} - %msg%n"
+
+# Resilience4j with stricter thresholds for gateway
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 15
+        failureRateThreshold: 40
+        waitDurationInOpenState: 20s
+  retry:
+    configs:
+      default:
+        maxAttempts: 2
+        waitDuration: 100ms
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gatewayroutes,circuitbreakers,retries,metrics
+  endpoint:
+    health:
+      show-details: always
