@@ -1,0 +1,40 @@
+# Bootstrap configuration - loaded BEFORE application.yml
+# Used to fetch configuration from Config Server and register with Eureka
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    config:
+      # Config Server location
+      uri: http://localhost:8888
+      # Fail fast if config server not available (catches issues early)
+      fail-fast: false
+      # Retry configuration fetching
+      retry:
+        initial-interval: 1000
+        max-interval: 10000
+        max-attempts: 6
+        multiplier: 1.1
+    service-registry:
+      auto-registration:
+        enabled: true
+
+eureka:
+  client:
+    service-url:
+      # Eureka Server location
+      defaultZone: http://localhost:8761/eureka/
+    # Register this service with Eureka
+    register-with-eureka: true
+    # Fetch the registry list from Eureka
+    fetch-registry: true
+    # How often to refresh the registry (in seconds)
+    registry-fetch-interval-seconds: 30
+  instance:
+    # Use IP address instead of hostname (better for local dev)
+    prefer-ip-address: true
+    # Heartbeat interval (in seconds)
+    lease-renewal-interval-in-seconds: 30
+    # Time to wait before removing instance if no heartbeat (in seconds)
+    lease-expiration-duration-in-seconds: 90

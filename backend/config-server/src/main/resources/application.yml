@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: config-server
+  cloud:
+    config:
+      server:
+        git:
+          # For production, use actual Git repo:
+          # uri: https://github.com/your-org/agrawalpulse-config.git
+          # For local dev, use filesystem:
+          # uri: file:///C:/Users/username/config-repo
+          # Using classpath for simplicity in this setup
+          default-label: main
+        # Fallback to native (local files) if Git not available
+        native:
+          search-locations: classpath:/config-repo
+
+server:
+  port: 8888
+
+logging:
+  level:
+    root: INFO
+    org.springframework.cloud.config: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

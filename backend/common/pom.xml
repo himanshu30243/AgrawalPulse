@@ -88,6 +88,30 @@
             <version>2.1.0</version>
         </dependency>
 
+        <!-- Service Discovery: Eureka client for all services -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+            <version>4.1.1</version>
+        </dependency>
+
+        <!-- Config Server: Fetch config from centralized config-server -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-config</artifactId>
+            <version>4.1.1</version>
+        </dependency>
+
+        <!-- Redis: Distributed cache (replaces in-memory ConcurrentMapCacheManager) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+        </dependency>
+
         <!-- API only, not spring-boot-starter-data-jpa: BaseEntity is a @MappedSuperclass consumed by
              each service's own entities, but common has no entities of its own to persist, and pulling
              in Hibernate/a JPA runtime here would be a per-service (JPA/Postgres/Flyway/Redis) concern

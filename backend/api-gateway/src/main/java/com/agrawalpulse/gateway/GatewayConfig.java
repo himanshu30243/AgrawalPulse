@@ -24,53 +24,54 @@ public class GatewayConfig {
   public RouteLocator routes(RouteLocatorBuilder builder) {
     return builder.routes()
 
-        // User Service (port 8081)
+        // User Service - Routes via Eureka load balancer (lb://)
+        // When multiple instances of user-service exist, load balancer will distribute
         .route("user-service-route",
             r -> r.path("/api/v1/users/**", "/api/v1/local-auth/**")
                 .filters(f -> f
                     .stripPrefix(0)
                     .addRequestHeader("X-Gateway-Route", "user-service"))
-                .uri("http://localhost:8081"))
+                .uri("lb://user-service"))
 
-        // Family Service (port 8082)
+        // Family Service
         .route("family-service-route",
             r -> r.path("/api/v1/families/**", "/api/v1/chapters/**")
                 .filters(f -> f
                     .stripPrefix(0)
                     .addRequestHeader("X-Gateway-Route", "family-service"))
-                .uri("http://localhost:8082"))
+                .uri("lb://family-service"))
 
-        // Membership Service (port 8083)
+        // Membership Service
         .route("membership-service-route",
             r -> r.path("/api/v1/memberships/**", "/api/v1/roles/**")
                 .filters(f -> f
                     .stripPrefix(0)
                     .addRequestHeader("X-Gateway-Route", "membership-service"))
-                .uri("http://localhost:8083"))
+                .uri("lb://membership-service"))
 
-        // Matrimony Service (port 8084)
+        // Matrimony Service
         .route("matrimony-service-route",
             r -> r.path("/api/v1/matrimony/**", "/api/v1/profiles/**")
                 .filters(f -> f
                     .stripPrefix(0)
                     .addRequestHeader("X-Gateway-Route", "matrimony-service"))
-                .uri("http://localhost:8084"))
+                .uri("lb://matrimony-service"))
 
-        // Event Service (port 8085)
+        // Event Service
         .route("event-service-route",
             r -> r.path("/api/v1/events/**")
                 .filters(f -> f
                     .stripPrefix(0)
                     .addRequestHeader("X-Gateway-Route", "event-service"))
-                .uri("http://localhost:8085"))
+                .uri("lb://event-service"))
 
-        // Analytics Service (port 8086)
+        // Analytics Service
         .route("analytics-service-route",
             r -> r.path("/api/v1/analytics/**", "/api/v1/reports/**", "/api/v1/dashboard/**")
                 .filters(f -> f
                     .stripPrefix(0)
                     .addRequestHeader("X-Gateway-Route", "analytics-service"))
-                .uri("http://localhost:8086"))
+                .uri("lb://analytics-service"))
 
         // Health checks (no routing, return 200 OK)
         .route("health-route",
