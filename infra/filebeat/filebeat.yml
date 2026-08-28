@@ -1,0 +1,22 @@
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /var/log/agrawalpulse/*-json.log*
+  fields:
+    type: microservice
+  fields_under_root: true
+  json.message_key: message
+  json.keys_under_root: true
+  json.add_error_key: true
+  tags: ["json"]
+
+processors:
+  - add_docker_metadata:
+      host: "unix:///var/run/docker.sock"
+
+output.logstash:
+  hosts: ["logstash:5000"]
+  bulk_max_size: 1024
+
+logging.level: info

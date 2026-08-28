@@ -12,6 +12,12 @@ spring:
     hibernate:
       ddl-auto: validate
     show-sql: true
+  cloud:
+    sleuth:
+      enabled: true
+      trace-id128: false
+      web:
+        skip-pattern: "^(?!.*actuator).*$|.+\\.js|.+\\.css|.*\\.png"
 
 agrawalpulse:
   jwt:
@@ -27,3 +33,40 @@ agrawalpulse:
 logging:
   level:
     com.agrawalpulse: DEBUG
+    org.springframework: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%-5level] %logger{36} - %msg%n"
+
+# Resilience4j: circuit breaker, retry, timeout for inter-service calls
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+  retry:
+    configs:
+      default:
+        maxAttempts: 2
+        waitDuration: 100ms
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 5000ms
+        cancelRunningFuture: true
+    instances:
+      user-service:
+        timeoutDuration: 3000ms
+
+# Actuator: expose health check & metrics
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,circuitbreakers,retries,timelimiters
+  endpoint:
+    health:
+      show-details: always

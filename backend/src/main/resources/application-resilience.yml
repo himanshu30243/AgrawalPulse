@@ -1,0 +1,98 @@
+# Resilience4j configuration - applied to all profiles
+# Provides circuit breaker, retry, timeout, bulkhead patterns for inter-service calls
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        slowCallRateThreshold: 50
+        slowCallDurationThreshold: 2000ms
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+    instances:
+      user-service:
+        baseConfig: default
+        slidingWindowSize: 15
+        failureRateThreshold: 40
+        waitDurationInOpenState: 20s
+      family-service:
+        baseConfig: default
+      membership-service:
+        baseConfig: default
+      matrimony-service:
+        baseConfig: default
+      event-service:
+        baseConfig: default
+      analytics-service:
+        baseConfig: default
+
+  retry:
+    configs:
+      default:
+        maxAttempts: 2
+        waitDuration: 100ms
+        retryExceptions:
+          - java.net.ConnectException
+          - java.net.SocketTimeoutException
+        ignoreExceptions:
+          - java.lang.IllegalArgumentException
+    instances:
+      user-service:
+        baseConfig: default
+      family-service:
+        baseConfig: default
+      membership-service:
+        baseConfig: default
+      matrimony-service:
+        baseConfig: default
+      event-service:
+        baseConfig: default
+      analytics-service:
+        baseConfig: default
+
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 5000ms
+        cancelRunningFuture: true
+    instances:
+      user-service:
+        baseConfig: default
+        timeoutDuration: 3000ms
+      family-service:
+        baseConfig: default
+      membership-service:
+        baseConfig: default
+      matrimony-service:
+        baseConfig: default
+      event-service:
+        baseConfig: default
+      analytics-service:
+        baseConfig: default
+
+  # Enable actuator endpoints to see circuit breaker status
+  management:
+    endpoints:
+      web:
+        exposure:
+          include: health,info,circuitbreakers,retries,timelimiters,metrics
+
+# Actuator: expose metrics for monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,circuitbreakers,retries,timelimiters,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      simple:
+        enabled: true
+    tags:
+      application: agrawalpulse
