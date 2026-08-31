@@ -9,6 +9,10 @@ frontend/npm-debug.log*
 frontend/yarn-debug.log*
 frontend/yarn-error.log*
 frontend/.DS_Store
+# TypeScript's own incremental build cache - regenerates on every `tsc` run (including CI's
+# npm run build), was tracked in git by mistake so it showed as "modified" after every local
+# build regardless of any real change.
+frontend/*.tsbuildinfo
 
 # ========== Backend (Java / Maven) ==========
 backend/target/
@@ -64,10 +68,15 @@ local.properties
 settings.local.json
 
 # ========== Database & Local Services ==========
-db/
-data/
-postgres/
-redis/
+# Anchored to repo root (leading /) - the earlier bare `data/` matched ANY directory named
+# "data" anywhere in the tree, which silently excluded frontend/src/data/ (real source,
+# imported by AddressStep.tsx/CommunityStep.tsx) from git entirely. Found via a fresh-clone
+# build test: `git ls-files` had zero entries for that directory despite it existing on disk
+# with real content, and a genuinely fresh checkout failed to compile without it.
+/db/
+/data/
+/postgres/
+/redis/
 *.db
 *.sqlite
 *.sqlite3
