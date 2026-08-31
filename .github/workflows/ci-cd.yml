@@ -1,5 +1,8 @@
 name: CI/CD
 
+# Enabled 2026-08-31: repo Settings -> Actions -> General had Actions disabled, so the workflow
+# was recognized/listed but no push ever produced a run - see docs/GITHUB_ACTIONS_ARGOCD_GUIDE.md.
+#
 # Two-stage pipeline:
 #   1. CI - build & test the backend reactor and the frontend, on every push and PR.
 #   2. CD handoff - on push to main only: build+push every image to GHCR, then bump the
