@@ -1,6 +1,8 @@
 # Multi-stage build for React + Vite frontend
 # Stage 1: Build
-FROM node:20-alpine AS builder
+# 22, not 20: @testing-library/jest-dom (and possibly others) require >=22 - kept in step with
+# .github/workflows/ci-cd.yml's node-version.
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
