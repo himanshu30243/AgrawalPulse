@@ -1,7 +1,17 @@
 spring:
   application:
     name: api-gateway
+  main:
+    web-application-type: reactive
+  config:
+    import: "optional:configserver:http://localhost:8888"
   cloud:
+    # common pins spring-cloud-starter-sleuth (older 2021.0.x train) for MDC trace/span IDs
+    # alongside gateway/eureka-client/config-client on the 2023.x (4.1.x) train. The two trains
+    # are functionally fine together for our usage but fail Spring Cloud's own compatibility
+    # gate - see docs/API_GATEWAY_GUIDE.md for the Micrometer Tracing migration this defers.
+    compatibility-verifier:
+      enabled: false
     gateway:
       default-filters:
         - name: RequestLoggingGatewayFilterFactory

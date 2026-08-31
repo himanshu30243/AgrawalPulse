@@ -22,8 +22,12 @@ FROM nginx:alpine
 # Copy built assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy Nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Template, not a static conf: nginx's own docker-entrypoint.sh runs envsubst on every
+# file under /etc/nginx/templates/*.template at container start and writes the result to
+# conf.d/ - that's what actually resolves ${API_GATEWAY_HOST} in nginx.conf.template.
+# A default keeps `docker run` without -e usable for a quick local smoke test.
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+ENV API_GATEWAY_HOST=localhost:8090
 
 # Expose port
 EXPOSE 80

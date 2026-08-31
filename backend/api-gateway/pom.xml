@@ -19,31 +19,53 @@
     <packaging>jar</packaging>
 
     <dependencies>
+        <!-- Spring Cloud Gateway is reactive (Netty/WebFlux) and is incompatible on the same
+             classpath as Spring MVC (servlet). common pulls in spring-boot-starter-web,
+             spring-boot-starter-security, oauth2-resource-server and springdoc's webmvc-ui for
+             every other (servlet-based) service, so all of those must be excluded here - the
+             gateway only needs common's logging/resilience/cache pieces. -->
         <dependency>
             <groupId>com.agrawalpulse</groupId>
             <artifactId>common</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-web</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-security</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.springdoc</groupId>
+                    <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
-        <!-- Spring Cloud Gateway: Non-blocking gateway for routing & filtering -->
+        <!-- Spring Cloud Gateway: Non-blocking gateway for routing & filtering.
+             Versions for all spring-cloud-* artifacts below come from the spring-cloud-dependencies
+             BOM (backend/pom.xml) - do not pin them individually here, that reintroduces the
+             version-skew ClassNotFoundException this project hit before the BOM was added. -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-gateway</artifactId>
-            <version>4.1.2</version>
         </dependency>
 
-        <!-- Gateway discovery: Dynamic service lookup (optional for future enhancement) -->
+        <!-- Gateway discovery: Dynamic service lookup (load-balanced lb:// routes) -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
-            <version>4.1.1</version>
-            <scope>provided</scope>
         </dependency>
 
         <!-- Rate limiting: Token bucket algorithm -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
-            <version>3.0.2</version>
         </dependency>
 
         <!-- Gateway actuator: /actuator/gatewayroutes to view all routes -->

@@ -25,8 +25,17 @@ import org.springframework.context.annotation.ComponentScan;
  *
  * Runs on port 8080 by default.
  */
+// Only pull in the reactive-safe pieces of common (resilience, cache). common.logging's
+// RequestLoggingFilter is a servlet Filter (jakarta.servlet/OncePerRequestFilter) and
+// com.agrawalpulse.common is servlet/Spring-MVC-based security config - both are built for the
+// other (servlet) services and are incompatible with this module's reactive WebFlux/Gateway
+// runtime, whose own request logging is handled by RequestLoggingGatewayFilterFactory instead.
 @SpringBootApplication
-@ComponentScan(basePackages = {"com.agrawalpulse"})
+@ComponentScan(basePackages = {
+    "com.agrawalpulse.gateway",
+    "com.agrawalpulse.resilience",
+    "com.agrawalpulse.cache"
+})
 public class ApiGatewayApplication {
 
   public static void main(String[] args) {

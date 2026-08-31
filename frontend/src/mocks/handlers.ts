@@ -45,6 +45,12 @@ const MOCK_ROLE_PERMISSIONS: Record<string, string[]> = {
   STATE_ADMIN: STATE_ADMIN_PERMISSIONS,
   NATIONAL_ADMIN: NATIONAL_ADMIN_PERMISSIONS,
   ADMIN: ADMIN_PERMISSIONS,
+  // Not one of the 5 seeded roles - stands in for a role an administrator creates at runtime
+  // (FamiliesListPage.test.tsx's "never offers registration ..." case). The /families handler
+  // below re-derives permissions from the JWT's role claim independently of whatever a test
+  // overrides /me to return, so this entry has to be kept in step with that test's /me override
+  // by hand, the same way the rest of this table is kept in step with the real seed migration.
+  AUDITOR: ['VIEW_FAMILY', 'VIEW_ALL_FAMILIES'],
 };
 
 const MOCK_ROLE_MENUS: Record<string, string[]> = {

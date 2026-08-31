@@ -19,10 +19,10 @@
     <packaging>jar</packaging>
 
     <dependencies>
+        <!-- Version comes from the spring-cloud-dependencies BOM (backend/pom.xml). -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-netflix-eureka-server</artifactId>
-            <version>4.1.1</version>
         </dependency>
 
         <dependency>

@@ -1,24 +1,15 @@
-# Multi-stage build. Builds from the backend/ reactor root so the Maven build can resolve the
-# common module as a reactor dependency, then run only event-service's tests/package.
-#
-# Build context must be backend/, e.g.:
+# Multi-stage build. Build context MUST be backend/ (the reactor root), so the Maven
+# wrapper can resolve every module declared in backend/pom.xml - not just this one -
+# even though only event-service is actually packaged. e.g.:
 #   docker build -f event-service/Dockerfile -t agrawalpulse/event-service .
+#
+# Events & RSVPs.
 FROM eclipse-temurin:21-jdk-alpine AS build
 WORKDIR /workspace
 
-COPY pom.xml .
-COPY common/pom.xml common/pom.xml
-COPY user-service/pom.xml user-service/pom.xml
-COPY family-service/pom.xml family-service/pom.xml
-COPY membership-service/pom.xml membership-service/pom.xml
-COPY matrimony-service/pom.xml matrimony-service/pom.xml
-COPY event-service/pom.xml event-service/pom.xml
-COPY analytics-service/pom.xml analytics-service/pom.xml
-COPY mvnw .
-COPY .mvn .mvn
-
-COPY common/src common/src
-COPY event-service/src event-service/src
+# Whole reactor first (poms + wrapper), so `docker build` fails fast and clearly if a
+# module is missing here, instead of failing deep inside a Maven reactor scan.
+COPY . .
 
 RUN ./mvnw -q -pl event-service -am -DskipTests package
 

@@ -1,0 +1,6 @@
+# Shared placeholder config for all services fetching from Config Server.
+# Currently each service still ships its own application-local.yml alongside
+# bootstrap.yml (fail-fast: false), so this file just needs to exist so the
+# native repository has something to serve instead of 404-ing on every request.
+info:
+  config-server: agrawalpulse

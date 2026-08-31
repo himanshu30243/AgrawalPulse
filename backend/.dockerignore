@@ -1,0 +1,12 @@
+# Keeps the Docker build context (backend/) small and avoids invalidating
+# layer cache on files that never affect the build output.
+**/target/
+**/*.class
+**/.idea/
+**/*.iml
+**/.settings/
+**/.classpath
+**/.project
+**/hs_err_pid*.log
+.git/
+.gitignore

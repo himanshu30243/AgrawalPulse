@@ -1,0 +1,23 @@
+# Scopes what the AgrawalPulse Applications below are allowed to do, instead of relying on
+# ArgoCD's permissive `default` AppProject. Apply this once per cluster before the
+# Applications: `kubectl apply -f argocd/project.yaml -n argocd`.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: agrawalpulse
+  namespace: argocd
+spec:
+  description: AgrawalPulse microservices platform
+  sourceRepos:
+    - https://github.com/himanshu30243/AgrawalPulse.git
+  destinations:
+    - namespace: agrawalpulse-dev
+      server: https://kubernetes.default.svc
+    - namespace: agrawalpulse-prod
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

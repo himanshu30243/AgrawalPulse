@@ -1,17 +1,13 @@
 spring:
   application:
     name: config-server
+  profiles:
+    # Local dev: serve config from local filesystem/classpath instead of Git.
+    # Switch to a "git" profile (with server.git.uri set) for production.
+    active: native
   cloud:
     config:
       server:
-        git:
-          # For production, use actual Git repo:
-          # uri: https://github.com/your-org/agrawalpulse-config.git
-          # For local dev, use filesystem:
-          # uri: file:///C:/Users/username/config-repo
-          # Using classpath for simplicity in this setup
-          default-label: main
-        # Fallback to native (local files) if Git not available
         native:
           search-locations: classpath:/config-repo
 

@@ -1,0 +1,9 @@
+apiVersion: v2
+name: agrawalpulse
+description: >
+  AgrawalPulse microservices platform - Eureka, Config Server, API Gateway,
+  6 Spring Boot services, and the frontend, deployed as one Helm release.
+  ArgoCD watches this chart directly (no separate manifests repo).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

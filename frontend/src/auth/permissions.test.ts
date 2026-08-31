@@ -116,18 +116,18 @@ describe('edit / delete', () => {
 });
 
 describe('visibleFamilies', () => {
-  it('shows everything to VIEW_ALL_FAMILIES holders', () => {
+  // family-service already resolved read scope (owner/chapter/state/all) server-side - see
+  // visibleFamilies' own doc comment. It must pass the result through unchanged regardless of
+  // the caller's permissions; re-narrowing here is exactly the pre-owner-DTO-fix bug that used
+  // to hide a user's own just-created family.
+  it('passes through whatever the backend already returned, regardless of permissions', () => {
+    expect(visibleFamilies(mockFamilies, { permissions: CHAPTER_ADMIN }, stranger)).toEqual(mockFamilies);
+    expect(visibleFamilies(mockFamilies, { permissions: USER }, owner)).toEqual(mockFamilies);
+    expect(visibleFamilies(mockFamilies, { permissions: [] }, owner)).toEqual(mockFamilies);
+  });
+
+  it('still reports VIEW_ALL_FAMILIES for UI gating elsewhere (e.g. an "all chapters" filter)', () => {
     expect(canViewAllFamilies({ permissions: CHAPTER_ADMIN })).toBe(true);
-    expect(visibleFamilies(mockFamilies, { permissions: CHAPTER_ADMIN }, stranger))
-      .toHaveLength(mockFamilies.length);
-  });
-
-  it('limits a plain user to the family they own', () => {
-    expect(visibleFamilies(mockFamilies, { permissions: USER }, owner).map((f) => f.id))
-      .toEqual([familyOne.id]);
-  });
-
-  it('shows nothing without any family read permission', () => {
-    expect(visibleFamilies(mockFamilies, { permissions: [] }, owner)).toEqual([]);
+    expect(canViewAllFamilies({ permissions: USER })).toBe(false);
   });
 });

@@ -1,0 +1,21 @@
+{{- $root := . -}}
+{{- range .Values.services }}
+{{- $svc := . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svc.name }}
+  namespace: {{ $root.Values.global.namespace }}
+  labels:
+    {{- include "agrawalpulse.selectorLabels" $svc | nindent 4 }}
+    {{- include "agrawalpulse.labels" $root | nindent 4 }}
+spec:
+  selector:
+    {{- include "agrawalpulse.selectorLabels" $svc | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: http
+  type: ClusterIP
+{{- end }}

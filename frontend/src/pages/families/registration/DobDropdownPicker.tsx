@@ -76,7 +76,6 @@ export function DobDropdownPicker({ label, value, onChange, error, required }: D
     setDay(parsed.day);
     setMonth(parsed.month);
     setYear(parsed.year);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
   const emit = (nextDay: string, nextMonth: string, nextYear: string) => {

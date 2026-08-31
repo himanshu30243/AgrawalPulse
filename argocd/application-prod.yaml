@@ -1,0 +1,33 @@
+# Prod: no `automated` sync policy - ArgoCD shows the app as OutOfSync as soon as main moves,
+# but never applies it on its own. Promote deliberately once dev looks good:
+#   argocd app sync agrawalpulse-prod
+# or click Sync in the ArgoCD UI. Apply once: `kubectl apply -f argocd/application-prod.yaml -n argocd`.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agrawalpulse-prod
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: agrawalpulse
+  source:
+    repoURL: https://github.com/himanshu30243/AgrawalPulse.git
+    targetRevision: main
+    path: helm/agrawalpulse
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-prod.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: agrawalpulse-prod
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

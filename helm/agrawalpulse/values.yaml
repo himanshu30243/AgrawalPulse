@@ -1,0 +1,160 @@
+# Default values = the "dev" environment. Prod overrides live in values-prod.yaml and are
+# layered on top with `helm upgrade -f values.yaml -f values-prod.yaml` (that's also exactly
+# what the ArgoCD Application for prod does via `source.helm.valueFiles`).
+#
+# Postgres is treated as external infra (RDS / Cloud SQL / your own long-lived instance) -
+# it isn't part of this chart. Point services at it via global.database + the db-credentials
+# Secret below. Redis IS deployed by this chart: unlike the primary datastore it's disposable
+# cache, so co-deploying it alongside the services that use it is the normal pattern.
+#
+# Per-service replicas/resources deliberately do NOT live inline on the `services` list below.
+# Helm layers values files by deep-merging maps, but a list is replaced wholesale by whichever
+# file sets it last - so anything overridden per environment lives in the `global.replicas` /
+# `global.resourceTiers` maps instead, and each service just names a `tier`. That keeps
+# values-prod.yaml a short diff instead of a second copy of the whole service list.
+
+global:
+  namespace: agrawalpulse-dev
+  imageRegistry: ghcr.io/himanshu30243/agrawalpulse
+  # Bumped by .github/workflows/ci-cd.yml after it builds+pushes every image from the same
+  # commit - the whole reactor ships as one versioned release, matching how the multi-module
+  # Maven build already versions every module together (0.1.0-SNAPSHOT).
+  imageTag: latest
+  imagePullPolicy: IfNotPresent
+
+  eurekaUrl: http://eureka-server:8761/eureka/
+  configServerUrl: http://config-server:8888
+  redisHost: redis
+  redisPort: "6379"
+  # In-cluster Service DNS name:port the frontend's nginx proxies /api/ to. Same value in
+  # every environment (it's the chart's own api-gateway Service, not an external endpoint).
+  gatewayHost: api-gateway:8090
+
+  # Only the frontend is externally reachable - it serves the SPA and proxies /api/ to
+  # api-gateway *inside* the cluster, so api-gateway and every backend service stay ClusterIP.
+  # Assumes an ingress-nginx controller is already installed; swap className/host for
+  # whatever this cluster actually runs.
+  ingress:
+    enabled: true
+    className: nginx
+    host: agrawalpulse.local
+
+  database:
+    # Real value: point at your managed Postgres. This default only resolves inside the
+    # docker-compose network, never inside a real cluster - deploying with it unedited fails
+    # loudly (DNS lookup error) instead of silently talking to the wrong database.
+    host: postgres.internal.invalid
+    port: "5432"
+    name: agrawalpulse
+
+  # Placeholder only - see helm/agrawalpulse/README.md. Overridden per-environment via
+  # `--set-string secrets.dbUsername=... --set-string secrets.dbPassword=...` (dev) or a
+  # real secret manager / External Secrets Operator (prod). Never commit real credentials.
+  secrets:
+    dbUsername: agrawalpulse
+    dbPassword: changeme-in-real-deployment
+
+  # Default replica count for every service unless the service sets its own `replicas:`.
+  replicas: 1
+
+  # Looked up by each service's `tier:`. Dicts deep-merge across values files, so
+  # values-prod.yaml only needs to redefine the numbers that actually change.
+  resourceTiers:
+    light:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { cpu: 250m, memory: 128Mi }
+    small:
+      requests: { cpu: 150m, memory: 320Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    standard:
+      requests: { cpu: 200m, memory: 384Mi }
+      limits: { cpu: 750m, memory: 640Mi }
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  tier: light
+
+# One entry per deployable. templates/deployment.yaml and templates/service.yaml each range
+# over this list once, so adding a service means adding one entry here - not a new pair of
+# hand-written manifest files that can silently drift out of sync with the reactor.
+services:
+  - name: eureka-server
+    port: 8761
+    tier: small
+    healthPath: /actuator/health
+    springProfile: ""
+    needsDiscovery: false
+    needsDatabase: false
+
+  - name: config-server
+    port: 8888
+    tier: small
+    healthPath: /actuator/health
+    springProfile: ""
+    needsDiscovery: false
+    needsDatabase: false
+
+  - name: api-gateway
+    port: 8090
+    tier: standard
+    healthPath: /actuator/health
+    springProfile: local
+    needsDiscovery: true
+    needsDatabase: false
+
+  - name: user-service
+    port: 8081
+    tier: standard
+    healthPath: /actuator/health
+    springProfile: local
+    needsDiscovery: true
+    needsDatabase: true
+
+  - name: family-service
+    port: 8082
+    tier: standard
+    healthPath: /actuator/health
+    springProfile: local
+    needsDiscovery: true
+    needsDatabase: true
+
+  - name: membership-service
+    port: 8083
+    tier: standard
+    healthPath: /actuator/health
+    springProfile: local
+    needsDiscovery: true
+    needsDatabase: true
+
+  - name: matrimony-service
+    port: 8084
+    tier: standard
+    healthPath: /actuator/health
+    springProfile: local
+    needsDiscovery: true
+    needsDatabase: true
+
+  - name: event-service
+    port: 8085
+    tier: standard
+    healthPath: /actuator/health
+    springProfile: local
+    needsDiscovery: true
+    needsDatabase: true
+
+  - name: analytics-service
+    port: 8086
+    tier: standard
+    healthPath: /actuator/health
+    springProfile: local
+    needsDiscovery: true
+    needsDatabase: true
+
+  - name: frontend
+    port: 80
+    tier: light
+    healthPath: /health
+    isFrontend: true
+    needsDiscovery: false
+    needsDatabase: false

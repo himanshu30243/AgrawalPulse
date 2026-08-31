@@ -1,0 +1,25 @@
+# App-of-apps: the ONE thing you apply by hand. It points at this argocd/ folder itself, so
+# ArgoCD then manages project.yaml, application-dev.yaml and application-prod.yaml for you -
+# add a new environment later by adding one more Application file here, not another manual
+# `kubectl apply`.
+#   kubectl apply -f argocd/root-app.yaml -n argocd
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agrawalpulse-root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/himanshu30243/AgrawalPulse.git
+    targetRevision: main
+    path: argocd
+    directory:
+      exclude: "root-app.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

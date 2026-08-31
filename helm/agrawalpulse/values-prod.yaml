@@ -1,0 +1,20 @@
+# Layered on top of values.yaml (`-f values.yaml -f values-prod.yaml`). Only the numbers that
+# actually change between dev and prod live here - service topology (ports, health paths,
+# which services need discovery/a database) doesn't change per environment, so it stays in
+# the one place, values.yaml.
+
+global:
+  namespace: agrawalpulse-prod
+  replicas: 2
+  ingress:
+    host: agrawalpulse.example.com
+  resourceTiers:
+    small:
+      requests: { cpu: 250m, memory: 384Mi }
+      limits: { cpu: 750m, memory: 640Mi }
+    standard:
+      requests: { cpu: 400m, memory: 512Mi }
+      limits: { cpu: 1000m, memory: 896Mi }
+
+redis:
+  tier: small

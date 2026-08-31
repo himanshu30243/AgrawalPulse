@@ -1,0 +1,87 @@
+{{- $root := . -}}
+{{- range .Values.services }}
+{{- $svc := . }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $svc.name }}
+  namespace: {{ $root.Values.global.namespace }}
+  labels:
+    {{- include "agrawalpulse.selectorLabels" $svc | nindent 4 }}
+    {{- include "agrawalpulse.labels" $root | nindent 4 }}
+spec:
+  replicas: {{ $svc.replicas | default $root.Values.global.replicas }}
+  selector:
+    matchLabels:
+      {{- include "agrawalpulse.selectorLabels" $svc | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agrawalpulse.selectorLabels" $svc | nindent 8 }}
+      annotations:
+        # Forces a rollout when only the image tag changes but the manifest text doesn't
+        # otherwise differ - belt-and-suspenders alongside the image tag itself changing.
+        agrawalpulse.io/image-tag: {{ $root.Values.global.imageTag | quote }}
+    spec:
+      containers:
+        - name: {{ $svc.name }}
+          image: "{{ $root.Values.global.imageRegistry }}/{{ $svc.name }}:{{ $root.Values.global.imageTag }}"
+          imagePullPolicy: {{ $root.Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+          env:
+            {{- if $svc.isFrontend }}
+            - name: API_GATEWAY_HOST
+              value: {{ $root.Values.global.gatewayHost | quote }}
+            {{- else }}
+            {{- if $svc.springProfile }}
+            - name: SPRING_PROFILES_ACTIVE
+              value: {{ $svc.springProfile | quote }}
+            {{- end }}
+            {{- if $svc.needsDiscovery }}
+            - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+              value: {{ $root.Values.global.eurekaUrl | quote }}
+            - name: SPRING_CONFIG_IMPORT
+              value: "optional:configserver:{{ $root.Values.global.configServerUrl }}"
+            - name: SPRING_CACHE_TYPE
+              value: redis
+            - name: SPRING_DATA_REDIS_HOST
+              value: {{ $root.Values.global.redisHost | quote }}
+            - name: SPRING_DATA_REDIS_PORT
+              value: {{ $root.Values.global.redisPort | quote }}
+            {{- end }}
+            {{- if $svc.needsDatabase }}
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://{{ $root.Values.global.database.host }}:{{ $root.Values.global.database.port }}/{{ $root.Values.global.database.name }}"
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: agrawalpulse-db-credentials
+                  key: username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: agrawalpulse-db-credentials
+                  key: password
+            {{- end }}
+            {{- end }}
+          {{- $health := $svc.healthPath | default "/" }}
+          readinessProbe:
+            httpGet:
+              path: {{ $health }}
+              port: http
+            initialDelaySeconds: {{ if $svc.isFrontend }}5{{ else }}30{{ end }}
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: {{ $health }}
+              port: http
+            initialDelaySeconds: {{ if $svc.isFrontend }}10{{ else }}60{{ end }}
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            {{- include "agrawalpulse.resources" (dict "svc" $svc "root" $root) | nindent 12 }}
+{{- end }}

@@ -36,6 +36,13 @@
         <awssdk.version>2.28.11</awssdk.version>
         <lombok.version>1.18.38</lombok.version>
         <springdoc.version>2.6.0</springdoc.version>
+        <!-- Spring Cloud 2023.0.x ("Leyton") is the release train aligned with Spring Boot 3.3.x.
+             Importing this BOM is what keeps spring-cloud-gateway, netflix-eureka-client,
+             config-client, loadbalancer, etc. all on mutually-compatible versions - declaring
+             each spring-cloud-starter-* with its own hand-picked <version> (as this project did
+             before) silently mixes incompatible module versions and fails at runtime with
+             ClassNotFoundException/NoSuchMethodError deep in spring-cloud-commons. -->
+        <spring-cloud.version>2023.0.3</spring-cloud.version>
         <!-- Spring Boot 3.3.4's managed mockito-core (5.11.0, byte-buddy 1.14.19) predates JDK 25
              and can't instrument classes on it at all ("Byte Buddy could not instrument all
              classes"). Overriding the BOM-managed version is the standard fix until the parent
@@ -48,6 +55,13 @@
          its own <dependencies>, but never needs to repeat a <version>. -->
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>com.agrawalpulse</groupId>
                 <artifactId>common</artifactId>

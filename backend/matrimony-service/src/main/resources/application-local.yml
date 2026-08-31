@@ -2,6 +2,11 @@
 # Cognito is replaced by the local JWT issuer in security.local (see LocalJwtConfig) -
 # it must NEVER be wired into any other profile.
 spring:
+  config:
+    import: "optional:configserver:http://localhost:8888"
+  cloud:
+    compatibility-verifier:
+      enabled: false
   datasource:
     url: jdbc:postgresql://localhost:5432/agrawalpulse
     username: agrawalpulse
@@ -48,6 +53,9 @@ resilience4j:
         timeoutDuration: 5000ms
 
 management:
+  health:
+    redis:
+      enabled: false
   endpoints:
     web:
       exposure:
@@ -55,3 +63,15 @@ management:
   endpoint:
     health:
       show-details: always
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+    registry-fetch-interval-seconds: 30
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 30
+    lease-expiration-duration-in-seconds: 90

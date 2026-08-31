@@ -88,18 +88,19 @@
             <version>2.1.0</version>
         </dependency>
 
-        <!-- Service Discovery: Eureka client for all services -->
+        <!-- Service Discovery: Eureka client for all services.
+             Version comes from the spring-cloud-dependencies BOM (backend/pom.xml) - do not
+             pin one here, it must stay aligned with gateway/config-client/loadbalancer or
+             spring-cloud-commons throws ClassNotFoundException/NoSuchMethodError at runtime. -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
-            <version>4.1.1</version>
         </dependency>
 
         <!-- Config Server: Fetch config from centralized config-server -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-config</artifactId>
-            <version>4.1.1</version>
         </dependency>
 
         <!-- Redis: Distributed cache (replaces in-memory ConcurrentMapCacheManager) -->
