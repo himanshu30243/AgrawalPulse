@@ -36,7 +36,17 @@ export default defineConfig({
     // avoids needing an actual gateway in front of them for local frontend development. Keep
     // this in sync with nginx/local-gateway.conf and docs/microservices-contract.md if a new
     // service/route is added.
+    // Vite matches these keys by plain string prefix (path.startsWith(key)) and takes the FIRST
+    // match in declaration order - it is NOT segment-aware. '/api/v1/memberships' starts with the
+    // literal substring '/api/v1/me', so with '/api/v1/me' declared first every membership-service
+    // request used to be silently routed to user-service instead (8081, not 8083) - reachable only
+    // by actually running the real (non-mock) dev server, since MSW's mock handlers match on full
+    // paths and never hit this proxy at all. '/api/v1/menus' has the same textual collision but
+    // was never symptomatic, since both it and '/api/v1/me' already target 8081. '/api/v1/memberships'
+    // must stay listed before '/api/v1/me' - if a future route also starts with '/api/v1/me' and
+    // targets a different service, it needs the same ordering fix.
     proxy: {
+      '/api/v1/memberships': 'http://localhost:8083',
       '/api/v1/local-auth': 'http://localhost:8081',
       '/api/v1/me': 'http://localhost:8081',
       '/api/v1/users': 'http://localhost:8081',
@@ -45,7 +55,6 @@ export default defineConfig({
       '/api/v1/permissions': 'http://localhost:8081',
       '/api/v1/menus': 'http://localhost:8081',
       '/api/v1/families': 'http://localhost:8082',
-      '/api/v1/memberships': 'http://localhost:8083',
       '/api/v1/matrimony': 'http://localhost:8084',
       '/api/v1/events': 'http://localhost:8085',
       '/api/v1/analytics': 'http://localhost:8086',

@@ -60,10 +60,17 @@ public class FamilyController {
                 request);
     }
 
+    // All three params optional - existing callers passing none get identical behavior to before
+    // (backward compatible). Added for membership-service's backend-composed pending-payment report
+    // search; the filters are applied server-side within the caller's own scope, so a plain USER
+    // searching still only ever gets their own family back, never another family's data.
     @GetMapping
     @PreAuthorize("hasAuthority('PERM_VIEW_FAMILY')")
-    public List<FamilyDto> listFamilies() {
-        return familyService.listFamilies(resolveScope());
+    public List<FamilyDto> listFamilies(
+            @RequestParam(required = false) String headOfFamilyName,
+            @RequestParam(required = false) String mobileNumber,
+            @RequestParam(required = false) String areaLocality) {
+        return familyService.listFamilies(resolveScope(), headOfFamilyName, mobileNumber, areaLocality);
     }
 
     // Fixed contract endpoint (docs/microservices-contract.md): membership-service/event-service/

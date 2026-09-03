@@ -9,14 +9,14 @@ interface Props {
 
 const STATUS_COLOR: Record<MembershipStatus, string> = {
   ACTIVE: statusColors.good,
-  PENDING: statusColors.warning,
-  INACTIVE: statusColors.critical,
+  PENDING_RENEWAL: statusColors.warning,
+  EXPIRED: statusColors.critical,
 };
 
 const STATUS_LABEL_KEY: Record<MembershipStatus, string> = {
   ACTIVE: 'membership.statusActive',
-  PENDING: 'membership.statusPending',
-  INACTIVE: 'membership.statusInactive',
+  PENDING_RENEWAL: 'membership.statusPendingRenewal',
+  EXPIRED: 'membership.statusExpired',
 };
 
 export function MembershipStatusChart({ data }: Props) {

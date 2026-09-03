@@ -30,8 +30,14 @@ export const PERMISSIONS = {
   deleteFamily: 'DELETE_FAMILY',
   viewMembership: 'VIEW_MEMBERSHIP',
   manageMembership: 'MANAGE_MEMBERSHIP',
+  viewChapterMembership: 'VIEW_CHAPTER_MEMBERSHIP',
+  viewStateMembership: 'VIEW_STATE_MEMBERSHIP',
+  viewAllMembership: 'VIEW_ALL_MEMBERSHIP',
   viewEvents: 'VIEW_EVENTS',
   manageEvents: 'MANAGE_EVENTS',
+  viewChapterEvents: 'VIEW_CHAPTER_EVENTS',
+  viewStateEvents: 'VIEW_STATE_EVENTS',
+  viewAllEvents: 'VIEW_ALL_EVENTS',
   viewMatrimonyDirectory: 'VIEW_MATRIMONY_DIRECTORY',
   manageMatrimonyConsent: 'MANAGE_MATRIMONY_CONSENT',
   viewReports: 'VIEW_REPORTS',
@@ -213,30 +219,87 @@ export interface CreateFamilyRequest {
   willingToContribute: boolean | null;
 }
 
-export type MembershipStatus = 'ACTIVE' | 'INACTIVE' | 'PENDING';
+// Financial-year (India, Apr-Mar) based, mirroring backend/membership-service's MembershipStatus:
+// ACTIVE = paid for the current FY; PENDING_RENEWAL = paid last FY but not yet this one (grace
+// period); EXPIRED = 2+ FYs unpaid, or never paid at all. See FinancialYearUtil server-side.
+export type MembershipStatus = 'ACTIVE' | 'PENDING_RENEWAL' | 'EXPIRED';
 
-export interface MembershipSummary {
+// GET /memberships/family/{familyId}/status - a family-level computed status (requirement #1's
+// "my membership status"), mirrors MembershipStatusDto.
+export interface MembershipStatusSummary {
   familyId: string;
   status: MembershipStatus;
-  annualFee: number;
+  currentFinancialYear: number;
+  currentFinancialYearPaid: boolean;
   lastPaymentDate: string | null;
-  nextDueDate: string | null;
+  lastPaidFinancialYear: number | null;
 }
 
-export interface MembershipPayment {
+// Matches backend/membership-service's PaymentMethod enum.
+export type PaymentMode = 'CASH' | 'UPI' | 'CARD' | 'BANK_TRANSFER' | 'CHEQUE';
+
+// One membership_payments row, mirrors MembershipTransactionDto. Replaces the old MembershipPayment
+// shape (id/familyId/amount/paymentDate/receiptNo only) - every field requirement #4 lists.
+export interface MembershipTransaction {
   id: string;
   familyId: string;
+  financialYear: number;
   amount: number;
   paymentDate: string;
-  receiptNo: string;
+  paymentMode: PaymentMode;
+  transactionRef: string | null;
+  remarks: string | null;
+  createdBy: string | null;
+  createdAt: string | null;
+  updatedBy: string | null;
+  updatedAt: string | null;
 }
 
-export interface ChapterCollectionSummary {
+// POST /memberships/transactions - admin records a payment against a family's financial year.
+export interface RecordTransactionRequest {
+  familyId: string;
+  financialYear: number;
+  amount: number;
+  paymentDate: string;
+  paymentMode: PaymentMode;
+  transactionRef: string;
+  remarks: string;
+}
+
+// PUT /memberships/transactions/{id} - directly-editable payments (MVP decision); familyId/
+// financialYear aren't editable, only the payment's own details.
+export interface UpdateTransactionRequest {
+  amount: number;
+  paymentDate: string;
+  paymentMode: PaymentMode;
+  transactionRef: string;
+  remarks: string;
+}
+
+// One row of the admin Pending Payment Report, mirrors MembershipReportRow.
+export interface MembershipReportRow {
+  familyId: string;
+  familyCode: string;
+  headOfFamilyName: string;
+  mobileNumber: string | null;
+  areaLocality: string | null;
   chapterId: string;
-  chapterName: string;
+  chapterName: string | null;
+  status: MembershipStatus;
+  lastPaidFinancialYear: number | null;
+  lastPaymentDate: string | null;
+}
+
+// GET /memberships/reports/collection-summary - one chapter's Membership Collection Summary for a
+// financial year, mirrors CollectionSummaryDto. Replaces ChapterCollectionSummary.
+export interface MembershipCollectionSummary {
+  chapterId: string;
+  chapterName: string | null;
+  financialYear: number;
   totalCollected: number;
-  familiesPaid: number;
+  familiesActive: number;
   familiesPending: number;
+  familiesExpired: number;
 }
 
 export type ConsentScope = 'CHAPTER' | 'NATIONAL';
@@ -261,20 +324,65 @@ export interface MatrimonyProfile {
   consentScope: ConsentScope;
 }
 
+export type EventStatus = 'DRAFT' | 'PUBLISHED' | 'CANCELLED';
+
+/** Query-only filter for the browse/manage listings - not a persisted concept. */
+export type EventTimeframe = 'UPCOMING' | 'PAST';
+
+// Mirrors backend/event-service's EventDto - replaces the old EventItem shape (name -> title,
+// eventDate split from new startTime/endTime, capacity/registeredCount dropped: they had zero
+// backend support anywhere and were never wired to the real API, see eventsApi.ts's comment).
 export interface EventItem {
   id: string;
-  name: string;
+  chapterId: string;
+  chapterName: string | null;
+  title: string;
+  description: string | null;
+  category: string | null;
   eventDate: string;
-  location: string;
-  description: string;
-  chapterName: string;
-  capacity: number;
-  registeredCount: number;
+  startTime: string;
+  endTime: string;
+  location: string | null;
+  organizerName: string | null;
+  contactDetails: string | null;
+  status: EventStatus;
+  hasBanner: boolean;
+  createdBy: string | null;
+  createdAt: string | null;
+  updatedBy: string | null;
+  updatedAt: string | null;
 }
 
-export interface EventRegistrationRequest {
+// Mirrors CreateEventRequest - status is deliberately absent, a created event always starts
+// DRAFT; publish/unpublish/cancel are their own endpoints (membershipApi's RecordTransactionRequest
+// follows the same "lifecycle is never a field on the write payload" convention).
+export interface CreateEventRequest {
+  title: string;
+  description: string;
+  category: string;
+  eventDate: string;
+  startTime: string;
+  endTime: string;
+  location: string;
+  organizerName: string;
+  contactDetails: string;
+}
+
+// Same shape/validation as CreateEventRequest - "cannot be in the past" governs any write that
+// sets/changes eventDate, not just creation.
+export type UpdateEventRequest = CreateEventRequest;
+
+// Mirrors RegisterFamilyRequest - replaces the old EventRegistrationRequest (attendeeCount had no
+// backend support at all; registration is family-based, one registration per family per event).
+export interface RegisterEventRequest {
+  familyId: string;
+}
+
+export interface EventRegistration {
+  id: string;
   eventId: string;
-  attendeeCount: number;
+  familyId: string;
+  registeredAt: string;
 }
 
 export interface FamiliesByChapterDatum {

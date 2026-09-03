@@ -1,4 +1,4 @@
-import type { BranchSummary, Family, FamilyMember } from '@/types/domain';
+import type { BranchSummary, EventItem, Family, FamilyMember } from '@/types/domain';
 import type { LocalLoginResponse } from '@/auth/types';
 
 // Realistic dummy data for standalone GUI testing/development - shaped exactly like the real
@@ -161,6 +161,119 @@ export const mockFamilies: Family[] = [
     hasProfilePhoto: false,
     ownerUserId: null,
     createdAt: '2026-02-03T11:00:00Z',
+  },
+];
+
+// Offsets computed at load time (not hardcoded dates) so "upcoming"/"past" timeframe filtering
+// stays correct no matter when tests actually run.
+function isoDateOffset(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+// Spans DRAFT/PUBLISHED/CANCELLED and two chapters (both Madhya Pradesh, like mockBranches) for
+// state/all-tier test symmetry with mockFamilies.
+export const mockEvents: EventItem[] = [
+  {
+    id: 'event-1',
+    chapterId: 'branch-indore',
+    chapterName: 'Indore Chapter',
+    title: 'Diwali Milan',
+    description: 'Community Diwali gathering with dinner and cultural programs.',
+    category: 'Festival',
+    eventDate: isoDateOffset(10),
+    startTime: '10:00:00',
+    endTime: '13:00:00',
+    location: 'Community Hall, Vijay Nagar',
+    organizerName: 'Ramesh Agrawal',
+    contactDetails: '9876543210',
+    status: 'PUBLISHED',
+    hasBanner: false,
+    createdBy: 'user-2',
+    createdAt: '2026-01-15T09:30:00Z',
+    updatedBy: null,
+    updatedAt: null,
+  },
+  {
+    id: 'event-2',
+    chapterId: 'branch-indore',
+    chapterName: 'Indore Chapter',
+    title: 'Youth Career Fair',
+    description: 'Planning stage - not yet ready for publishing.',
+    category: 'Education',
+    eventDate: isoDateOffset(20),
+    startTime: '09:00:00',
+    endTime: '17:00:00',
+    location: 'Community Hall, Vijay Nagar',
+    organizerName: null,
+    contactDetails: null,
+    status: 'DRAFT',
+    hasBanner: false,
+    createdBy: 'user-2',
+    createdAt: '2026-02-01T09:30:00Z',
+    updatedBy: null,
+    updatedAt: null,
+  },
+  {
+    id: 'event-3',
+    chapterId: 'branch-bhopal',
+    chapterName: 'Bhopal Chapter',
+    title: 'Holi Celebration',
+    description: 'Colors, music and snacks for the whole family.',
+    category: 'Festival',
+    eventDate: isoDateOffset(45),
+    startTime: '11:00:00',
+    endTime: '14:00:00',
+    location: 'Bhopal Community Park',
+    organizerName: 'Manoj Goyal',
+    contactDetails: '9123456780',
+    status: 'PUBLISHED',
+    hasBanner: false,
+    createdBy: 'user-2',
+    createdAt: '2026-02-10T09:30:00Z',
+    updatedBy: null,
+    updatedAt: null,
+  },
+  {
+    id: 'event-4',
+    chapterId: 'branch-indore',
+    chapterName: 'Indore Chapter',
+    title: 'Cancelled Blood Donation Camp',
+    description: 'Cancelled due to venue unavailability.',
+    category: 'Social',
+    eventDate: isoDateOffset(-5),
+    startTime: '08:00:00',
+    endTime: '12:00:00',
+    location: 'Community Hall, Vijay Nagar',
+    organizerName: null,
+    contactDetails: null,
+    status: 'CANCELLED',
+    hasBanner: false,
+    createdBy: 'user-2',
+    createdAt: '2026-01-20T09:30:00Z',
+    updatedBy: 'user-2',
+    updatedAt: '2026-01-25T09:30:00Z',
+  },
+  {
+    id: 'event-5',
+    chapterId: 'branch-indore',
+    chapterName: 'Indore Chapter',
+    title: 'Past Annual Meet',
+    description: 'Last year’s annual general meeting.',
+    category: 'Meeting',
+    eventDate: isoDateOffset(-30),
+    startTime: '10:00:00',
+    endTime: '12:00:00',
+    location: 'Community Hall, Vijay Nagar',
+    organizerName: 'Ramesh Agrawal',
+    contactDetails: '9876543210',
+    status: 'PUBLISHED',
+    hasBanner: false,
+    createdBy: 'user-2',
+    createdAt: '2025-12-01T09:30:00Z',
+    updatedBy: null,
+    updatedAt: null,
   },
 ];
 

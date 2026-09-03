@@ -22,6 +22,10 @@ spring:
     baseline-version: 0
     locations: classpath:db/migration
     table: flyway_schema_history_event
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 2MB
 
 server:
   port: 8085
@@ -32,6 +36,17 @@ agrawalpulse:
   services:
     family-service:
       base-url: ${FAMILY_SERVICE_URL:http://localhost:8082}
+    user-service:
+      # Used by BranchClient to resolve state-tier scope (which chapters share a caller's state)
+      # and to enrich event responses with a chapter name - same pattern as family-service's/
+      # membership-service's own UserServiceClientConfig/BranchClient.
+      base-url: ${USER_SERVICE_URL:http://localhost:8081}
+  event:
+    # Local-disk banner storage - fine for local/dev-stage, but NOT durable across container
+    # restarts or shared across replicas. See LocalDiskEventBannerStorage's class comment: prod
+    # needs either an EFS mount for this path or a future S3-backed EventBannerStorage impl
+    # before this is production-ready.
+    banner-storage-dir: ${EVENT_BANNER_STORAGE_DIR:./uploads/events-banners}
 
 management:
   endpoints:

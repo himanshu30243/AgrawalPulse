@@ -37,7 +37,13 @@ public interface FamilyService {
     // to distinguish the two.
     FamilyDto getFamily(FamilyAccessScope scope, UUID familyId);
 
-    List<FamilyDto> listFamilies(FamilyAccessScope scope);
+    // The three filters are optional/ANDed (null or blank = don't filter on that field), applied
+    // in-memory after scope resolution rather than as a new repository query - see
+    // FamilyServiceImpl.applySearchFilters for why. Added for membership-service's backend-composed
+    // pending-payment report search (headOfFamilyName/mobileNumber/areaLocality live here, not on
+    // membership-service's own records).
+    List<FamilyDto> listFamilies(FamilyAccessScope scope, String headOfFamilyName, String mobileNumber,
+                                  String areaLocality);
 
     FamilyMemberDto addFamilyMember(FamilyAccessScope scope, UUID familyId, CreateFamilyMemberRequest request);
 

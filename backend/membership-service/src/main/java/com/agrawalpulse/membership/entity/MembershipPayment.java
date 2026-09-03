@@ -12,9 +12,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -38,6 +40,13 @@ public class MembershipPayment extends BaseEntity {
     @Column(nullable = false)
     private BigDecimal amount;
 
+    // Admin-entered - when the payment actually happened, as opposed to createdAt below (when the
+    // record was entered into the system, which may be later for a backdated/catch-up entry).
+    // Membership.paidAt is re-stamped from this value whenever a transaction is recorded or edited
+    // (see MembershipServiceImpl), not from Instant.now().
+    @Column(name = "payment_date", nullable = false)
+    private LocalDate paymentDate;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_method", nullable = false)
     private PaymentMethod paymentMethod;
@@ -45,7 +54,20 @@ public class MembershipPayment extends BaseEntity {
     @Column(name = "transaction_ref")
     private String transactionRef;
 
+    @Column(name = "remarks")
+    private String remarks;
+
+    @Column(name = "created_by")
+    private UUID createdBy;
+
+    @Column(name = "updated_by")
+    private UUID updatedBy;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private Instant updatedAt;
+
     @CreationTimestamp
-    @Column(name = "paid_at", nullable = false, updatable = false)
-    private Instant paidAt;
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
 }

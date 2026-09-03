@@ -10,15 +10,17 @@ import java.util.UUID;
 
 public interface MembershipRepository extends JpaRepository<Membership, UUID> {
 
-    List<Membership> findByFamilyId(UUID familyId);
+    // Every FY row a family has - the input to computeStatus's grace-period roll-up (see
+    // MembershipServiceImpl). Newest first so lastPaid-style lookups don't need a separate sort.
+    List<Membership> findByFamilyIdOrderByYearDesc(UUID familyId);
 
-    Optional<Membership> findByFamilyIdAndYear(UUID familyId, int year);
+    // Scoped find-or-create for recordTransaction: chapterId is included (not just familyId+year)
+    // so this can never resolve to a row outside the family's own chapter even if familyId were
+    // somehow reused across chapters.
+    Optional<Membership> findByChapterIdAndFamilyIdAndYear(UUID chapterId, UUID familyId, int year);
 
-    // chapter_id is a direct column on memberships (denormalized from family-service's family at
-    // creation time), so chapter-wide listings filter on it directly rather than joining.
-    Optional<Membership> findByIdAndChapterId(UUID id, UUID chapterId);
-
-    List<Membership> findByChapterIdAndYear(UUID chapterId, int year);
-
+    // Collection-summary's "active" count - the one status a Membership row genuinely stores (see
+    // MembershipServiceImpl.collectionSummary; PENDING_RENEWAL/EXPIRED are never persisted, so this
+    // is only ever meaningful with MembershipStatus.ACTIVE).
     long countByChapterIdAndYearAndStatus(UUID chapterId, int year, MembershipStatus status);
 }

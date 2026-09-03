@@ -1,9 +1,18 @@
 import { apiClient } from './axiosClient';
 import type { CreateFamilyMemberRequest, CreateFamilyRequest, Family, FamilyMember } from '@/types/domain';
 
+export interface FamilySearchFilters {
+  headOfFamilyName?: string;
+  mobileNumber?: string;
+  areaLocality?: string;
+}
+
 export const familiesApi = {
-  async list(): Promise<Family[]> {
-    const { data } = await apiClient.get<Family[]>('/families');
+  // filters are optional query params applied server-side within the caller's own read scope
+  // (see family-service's FamilyController#listFamilies) - omitting them keeps the original
+  // "every visible family" behavior every existing caller relies on.
+  async list(filters?: FamilySearchFilters): Promise<Family[]> {
+    const { data } = await apiClient.get<Family[]>('/families', { params: filters });
     return data;
   },
   async get(familyId: string): Promise<Family> {

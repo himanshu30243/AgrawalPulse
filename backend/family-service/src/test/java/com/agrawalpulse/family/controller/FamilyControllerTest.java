@@ -161,11 +161,27 @@ class FamilyControllerTest {
     @Test
     void listFamilies_accessibleByMemberRole() throws Exception {
         when(tenantResolver.resolve()).thenReturn(new TenantContext(UUID.randomUUID(), CHAPTER_ID, false, false));
-        when(familyService.listFamilies(any(FamilyAccessScope.class))).thenReturn(List.of());
+        when(familyService.listFamilies(any(FamilyAccessScope.class), any(), any(), any())).thenReturn(List.of());
 
         mockMvc.perform(get("/api/v1/families")
                         .with(jwt().authorities(new SimpleGrantedAuthority("PERM_VIEW_FAMILY"))))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void listFamilies_searchParamsBindAndForwardToService() throws Exception {
+        when(tenantResolver.resolve()).thenReturn(new TenantContext(UUID.randomUUID(), CHAPTER_ID, false, false));
+        when(familyService.listFamilies(any(FamilyAccessScope.class), eq("Agrawal"), eq("98765"), eq("Vijay Nagar")))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/families")
+                        .param("headOfFamilyName", "Agrawal")
+                        .param("mobileNumber", "98765")
+                        .param("areaLocality", "Vijay Nagar")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("PERM_VIEW_FAMILY"))))
+                .andExpect(status().isOk());
+
+        verify(familyService).listFamilies(any(FamilyAccessScope.class), eq("Agrawal"), eq("98765"), eq("Vijay Nagar"));
     }
 
     @Test

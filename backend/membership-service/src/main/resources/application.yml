@@ -31,13 +31,16 @@ server:
 agrawalpulse:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
-  membership:
-    default-annual-fee: 250
   services:
     family-service:
       # Local default targets the family-service container/process directly; AWS resolves this
       # via FAMILY_SERVICE_URL (internal service discovery/ALB DNS name) - never hardcoded there.
       base-url: ${FAMILY_SERVICE_URL:http://localhost:8082}
+    user-service:
+      # Used by BranchClient to resolve state-tier scope (which chapters share a caller's state)
+      # and to enrich report rows with a chapter name - same pattern as family-service's own
+      # UserServiceClientConfig/BranchClient.
+      base-url: ${USER_SERVICE_URL:http://localhost:8081}
 
 management:
   endpoints:

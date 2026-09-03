@@ -1,22 +1,33 @@
 package com.agrawalpulse.membership.service;
 
-import com.agrawalpulse.membership.dto.CreateMembershipRequest;
-import com.agrawalpulse.membership.dto.MembershipDto;
-import com.agrawalpulse.membership.dto.MembershipPaymentDto;
-import com.agrawalpulse.membership.dto.RecordPaymentRequest;
+import com.agrawalpulse.membership.dto.CollectionSummaryDto;
+import com.agrawalpulse.membership.dto.MembershipReportRow;
+import com.agrawalpulse.membership.dto.MembershipStatusDto;
+import com.agrawalpulse.membership.dto.MembershipTransactionDto;
+import com.agrawalpulse.membership.dto.RecordTransactionRequest;
+import com.agrawalpulse.membership.dto.UpdateTransactionRequest;
+import com.agrawalpulse.membership.entity.MembershipStatus;
 
 import java.util.List;
 import java.util.UUID;
 
 public interface MembershipService {
 
-    MembershipDto createMembership(UUID chapterId, CreateMembershipRequest request);
+    MembershipStatusDto getStatus(MembershipAccessScope scope, UUID familyId);
 
-    MembershipDto getMembership(UUID chapterId, UUID membershipId);
+    List<MembershipTransactionDto> getTransactionHistory(MembershipAccessScope scope, UUID familyId);
 
-    List<MembershipDto> listMembershipsForChapter(UUID chapterId, int year);
+    MembershipTransactionDto recordTransaction(MembershipAccessScope scope, RecordTransactionRequest request);
 
-    MembershipPaymentDto recordPayment(UUID chapterId, UUID membershipId, RecordPaymentRequest request);
+    MembershipTransactionDto updateTransaction(MembershipAccessScope scope, UUID transactionId,
+                                                UpdateTransactionRequest request);
 
-    List<MembershipPaymentDto> listPayments(UUID chapterId, UUID membershipId);
+    List<MembershipStatusDto> listMembers(MembershipAccessScope scope, int financialYear,
+                                           MembershipStatus statusFilter);
+
+    List<MembershipReportRow> pendingPaymentReport(MembershipAccessScope scope, int financialYear, String familyId,
+                                                     String headOfFamilyName, String mobileNumber,
+                                                     String areaLocality);
+
+    CollectionSummaryDto collectionSummary(MembershipAccessScope scope, int financialYear);
 }

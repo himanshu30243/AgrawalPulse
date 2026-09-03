@@ -113,8 +113,10 @@ class FamilyServiceImpl implements FamilyService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<FamilyDto> listFamilies(FamilyAccessScope scope) {
-        List<Family> families = resolveFamiliesInScope(scope);
+    public List<FamilyDto> listFamilies(FamilyAccessScope scope, String headOfFamilyName, String mobileNumber,
+                                         String areaLocality) {
+        List<Family> families = applySearchFilters(
+                resolveFamiliesInScope(scope), headOfFamilyName, mobileNumber, areaLocality);
         // Results can span multiple chapters once state/national-level scope is in play, so branch
         // info is resolved as one map lookup per chapter (one REST call to user-service total),
         // not per family.
@@ -123,6 +125,24 @@ class FamilyServiceImpl implements FamilyService {
             branchesByChapterId.put(branch.id(), branch);
         }
         return families.stream().map(f -> toDto(f, branchesByChapterId.get(f.getChapterId()))).toList();
+    }
+
+    // In-memory filter, not a repository query: resolveFamiliesInScope already fully materializes
+    // the candidate list (this codebase has no pagination anywhere - every list method here and in
+    // every other service returns a plain List), so a second DB round-trip with a dynamic WHERE
+    // buys nothing at today's scale. If family/membership counts grow enough that this becomes a
+    // real cost, the fix is indexed LIKE queries + pagination on FamilyRepository - deferred, YAGNI
+    // at current scale.
+    private List<Family> applySearchFilters(List<Family> families, String headOfFamilyName,
+                                              String mobileNumber, String areaLocality) {
+        return families.stream()
+                .filter(f -> headOfFamilyName == null || headOfFamilyName.isBlank()
+                        || f.getHeadOfFamilyName().toLowerCase().contains(headOfFamilyName.toLowerCase()))
+                .filter(f -> mobileNumber == null || mobileNumber.isBlank()
+                        || (f.getMobileNumber() != null && f.getMobileNumber().contains(mobileNumber)))
+                .filter(f -> areaLocality == null || areaLocality.isBlank()
+                        || (f.getAreaLocality() != null && f.getAreaLocality().toLowerCase().contains(areaLocality.toLowerCase())))
+                .toList();
     }
 
     // Broadest-wins precedence, matching FamilyAccessScope's javadoc: VIEW_ALL_FAMILIES sees

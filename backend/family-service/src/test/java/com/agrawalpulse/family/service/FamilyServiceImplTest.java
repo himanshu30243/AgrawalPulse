@@ -294,7 +294,7 @@ class FamilyServiceImplTest {
         when(branchClient.listAll())
                 .thenReturn(List.of(new BranchSummaryDto(CHAPTER_ID, "Indore Chapter", "Indore", "MP")));
 
-        List<FamilyDto> result = familyService.listFamilies(chapterScope(CHAPTER_ID));
+        List<FamilyDto> result = familyService.listFamilies(chapterScope(CHAPTER_ID), null, null, null);
 
         assertThat(result).hasSize(2);
         assertThat(result).allSatisfy(dto -> assertThat(dto.branch()).isNotNull());
@@ -311,7 +311,7 @@ class FamilyServiceImplTest {
         when(familyRepository.findByOwnerUserId(OWNER_USER_ID)).thenReturn(List.of(owned));
         when(branchClient.listAll()).thenReturn(List.of());
 
-        List<FamilyDto> result = familyService.listFamilies(ownOnly);
+        List<FamilyDto> result = familyService.listFamilies(ownOnly, null, null, null);
 
         assertThat(result).extracting(FamilyDto::id).containsExactly(owned.getId());
         verify(familyRepository, never()).findByChapterId(any());
@@ -328,7 +328,7 @@ class FamilyServiceImplTest {
                 new BranchSummaryDto(UUID.randomUUID(), "Pune Chapter", "Pune", "Maharashtra")));
         when(familyRepository.findByChapterIdIn(any())).thenReturn(List.of());
 
-        familyService.listFamilies(stateScope);
+        familyService.listFamilies(stateScope, null, null, null);
 
         // Only chapters sharing the caller's own state (Madhya Pradesh) may be queried - the
         // Maharashtra chapter must never appear in the resolved id set.
@@ -343,12 +343,66 @@ class FamilyServiceImplTest {
         when(familyRepository.findAll()).thenReturn(List.of());
         when(branchClient.listAll()).thenReturn(List.of());
 
-        familyService.listFamilies(viewAll);
+        familyService.listFamilies(viewAll, null, null, null);
 
         verify(familyRepository).findAll();
         verify(familyRepository, never()).findByChapterId(any());
         verify(familyRepository, never()).findByChapterIdIn(any());
         verify(familyRepository, never()).findByOwnerUserId(any());
+    }
+
+    @Test
+    void listFamilies_filtersByHeadOfFamilyNameCaseInsensitivePartialMatch() {
+        Family agrawal = Family.builder().chapterId(CHAPTER_ID).headOfFamilyName("Ramesh Agrawal").build();
+        agrawal.setId(UUID.randomUUID());
+        Family goyal = Family.builder().chapterId(CHAPTER_ID).headOfFamilyName("Manoj Goyal").build();
+        goyal.setId(UUID.randomUUID());
+        when(familyRepository.findByChapterId(CHAPTER_ID)).thenReturn(List.of(agrawal, goyal));
+        when(branchClient.listAll()).thenReturn(List.of());
+
+        List<FamilyDto> result = familyService.listFamilies(chapterScope(CHAPTER_ID), "ramesh", null, null);
+
+        assertThat(result).extracting(FamilyDto::id).containsExactly(agrawal.getId());
+    }
+
+    @Test
+    void listFamilies_filtersByMobileNumberPartialMatch() {
+        Family match = Family.builder().chapterId(CHAPTER_ID).headOfFamilyName("A").mobileNumber("9876500001").build();
+        match.setId(UUID.randomUUID());
+        Family noMatch = Family.builder().chapterId(CHAPTER_ID).headOfFamilyName("B").mobileNumber("9876500002").build();
+        noMatch.setId(UUID.randomUUID());
+        when(familyRepository.findByChapterId(CHAPTER_ID)).thenReturn(List.of(match, noMatch));
+        when(branchClient.listAll()).thenReturn(List.of());
+
+        List<FamilyDto> result = familyService.listFamilies(chapterScope(CHAPTER_ID), null, "500001", null);
+
+        assertThat(result).extracting(FamilyDto::id).containsExactly(match.getId());
+    }
+
+    @Test
+    void listFamilies_filtersByAreaLocalityCaseInsensitivePartialMatch() {
+        Family match = Family.builder().chapterId(CHAPTER_ID).headOfFamilyName("A").areaLocality("Vijay Nagar").build();
+        match.setId(UUID.randomUUID());
+        Family noMatch = Family.builder().chapterId(CHAPTER_ID).headOfFamilyName("B").areaLocality("Palasia").build();
+        noMatch.setId(UUID.randomUUID());
+        when(familyRepository.findByChapterId(CHAPTER_ID)).thenReturn(List.of(match, noMatch));
+        when(branchClient.listAll()).thenReturn(List.of());
+
+        List<FamilyDto> result = familyService.listFamilies(chapterScope(CHAPTER_ID), null, null, "vijay");
+
+        assertThat(result).extracting(FamilyDto::id).containsExactly(match.getId());
+    }
+
+    @Test
+    void listFamilies_blankFiltersAreIgnored() {
+        Family family = Family.builder().chapterId(CHAPTER_ID).headOfFamilyName("A").build();
+        family.setId(UUID.randomUUID());
+        when(familyRepository.findByChapterId(CHAPTER_ID)).thenReturn(List.of(family));
+        when(branchClient.listAll()).thenReturn(List.of());
+
+        List<FamilyDto> result = familyService.listFamilies(chapterScope(CHAPTER_ID), "  ", "", null);
+
+        assertThat(result).extracting(FamilyDto::id).containsExactly(family.getId());
     }
 
     @Test

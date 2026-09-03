@@ -1,7 +1,22 @@
 import { http, HttpResponse } from 'msw';
-import { mockBranches, mockFamilies, mockFamilyMembers } from './fixtures';
+import { mockBranches, mockEvents, mockFamilies, mockFamilyMembers } from './fixtures';
 import { isOwnFamily } from '@/auth/permissions';
-import type { CreateFamilyMemberRequest, CreateFamilyRequest, Family, FamilyMember } from '@/types/domain';
+import type {
+  CreateEventRequest,
+  CreateFamilyMemberRequest,
+  CreateFamilyRequest,
+  EventItem,
+  EventRegistration,
+  EventStatus,
+  Family,
+  FamilyMember,
+  MembershipStatus,
+  MembershipStatusSummary,
+  MembershipTransaction,
+  RecordTransactionRequest,
+  RegisterEventRequest,
+  UpdateTransactionRequest,
+} from '@/types/domain';
 
 // Realistic in-memory mock backend for `npm run dev:mock` and every component test (see
 // src/test/setup.ts). Paths here MUST include the "/api/v1" prefix - apiClient's baseURL
@@ -34,10 +49,16 @@ const MOCK_MENUS = [
 // tier, never VIEW_ALL_FAMILIES (V4 fixed CHAPTER_ADMIN's over-broad V2 grant; V3 did the same for
 // STATE_ADMIN). Keep this in step with those migrations by hand, same as MOCK_MENUS above.
 const USER_PERMISSIONS = ['VIEW_DASHBOARD', 'VIEW_FAMILY', 'CREATE_FAMILY', 'EDIT_FAMILY', 'VIEW_MEMBERSHIP', 'VIEW_EVENTS', 'MANAGE_MATRIMONY_CONSENT'];
-const CHAPTER_ADMIN_PERMISSIONS = [...USER_PERMISSIONS, 'VIEW_CHAPTER_FAMILIES', 'CREATE_FAMILY_UNLIMITED', 'MANAGE_MEMBERSHIP', 'MANAGE_EVENTS', 'VIEW_MATRIMONY_DIRECTORY', 'VIEW_REPORTS', 'MANAGE_BRANCHES'];
-const STATE_ADMIN_PERMISSIONS = [...USER_PERMISSIONS, 'VIEW_STATE_FAMILIES', 'CREATE_FAMILY_UNLIMITED', 'MANAGE_MEMBERSHIP', 'MANAGE_EVENTS', 'VIEW_MATRIMONY_DIRECTORY', 'VIEW_REPORTS', 'MANAGE_BRANCHES', 'MANAGE_USERS'];
-const NATIONAL_ADMIN_PERMISSIONS = [...USER_PERMISSIONS, 'VIEW_ALL_FAMILIES', 'CREATE_FAMILY_UNLIMITED', 'MANAGE_MEMBERSHIP', 'MANAGE_EVENTS', 'VIEW_MATRIMONY_DIRECTORY', 'VIEW_REPORTS', 'MANAGE_BRANCHES', 'MANAGE_USERS'];
-const ADMIN_PERMISSIONS = [...NATIONAL_ADMIN_PERMISSIONS, 'VIEW_CHAPTER_FAMILIES', 'VIEW_STATE_FAMILIES', 'DELETE_FAMILY', 'MANAGE_ROLES'];
+// VIEW_CHAPTER_MEMBERSHIP/VIEW_STATE_MEMBERSHIP/VIEW_ALL_MEMBERSHIP mirror user-service's
+// V6__membership_visibility_scopes.sql exactly, same as the VIEW_x_FAMILIES tiers above mirror
+// V3/V4 - kept in step with that migration by hand.
+// VIEW_CHAPTER_EVENTS/VIEW_STATE_EVENTS/VIEW_ALL_EVENTS mirror user-service's
+// V7__event_visibility_scopes.sql exactly, same as the VIEW_x_MEMBERSHIP tiers mirror V6 - kept
+// in step with that migration by hand.
+const CHAPTER_ADMIN_PERMISSIONS = [...USER_PERMISSIONS, 'VIEW_CHAPTER_FAMILIES', 'CREATE_FAMILY_UNLIMITED', 'MANAGE_MEMBERSHIP', 'VIEW_CHAPTER_MEMBERSHIP', 'MANAGE_EVENTS', 'VIEW_CHAPTER_EVENTS', 'VIEW_MATRIMONY_DIRECTORY', 'VIEW_REPORTS', 'MANAGE_BRANCHES'];
+const STATE_ADMIN_PERMISSIONS = [...USER_PERMISSIONS, 'VIEW_STATE_FAMILIES', 'CREATE_FAMILY_UNLIMITED', 'MANAGE_MEMBERSHIP', 'VIEW_STATE_MEMBERSHIP', 'MANAGE_EVENTS', 'VIEW_STATE_EVENTS', 'VIEW_MATRIMONY_DIRECTORY', 'VIEW_REPORTS', 'MANAGE_BRANCHES', 'MANAGE_USERS'];
+const NATIONAL_ADMIN_PERMISSIONS = [...USER_PERMISSIONS, 'VIEW_ALL_FAMILIES', 'CREATE_FAMILY_UNLIMITED', 'MANAGE_MEMBERSHIP', 'VIEW_ALL_MEMBERSHIP', 'MANAGE_EVENTS', 'VIEW_ALL_EVENTS', 'VIEW_MATRIMONY_DIRECTORY', 'VIEW_REPORTS', 'MANAGE_BRANCHES', 'MANAGE_USERS'];
+const ADMIN_PERMISSIONS = [...NATIONAL_ADMIN_PERMISSIONS, 'VIEW_CHAPTER_FAMILIES', 'VIEW_STATE_FAMILIES', 'VIEW_CHAPTER_MEMBERSHIP', 'VIEW_STATE_MEMBERSHIP', 'VIEW_CHAPTER_EVENTS', 'VIEW_STATE_EVENTS', 'DELETE_FAMILY', 'MANAGE_ROLES'];
 
 const MOCK_ROLE_PERMISSIONS: Record<string, string[]> = {
   USER: USER_PERMISSIONS,
@@ -155,6 +176,11 @@ const familyMembers: Record<string, FamilyMember[]> = Object.fromEntries(
   Object.entries(mockFamilyMembers).map(([familyId, members]) => [familyId, [...members]]),
 );
 
+let nextEventId = mockEvents.length + 1;
+let nextRegistrationId = 1;
+const events: EventItem[] = [...mockEvents];
+const eventRegistrations: EventRegistration[] = [];
+
 function computeAge(dateOfBirth: string): number {
   const dob = new Date(dateOfBirth);
   if (Number.isNaN(dob.getTime())) return 0;
@@ -163,6 +189,100 @@ function computeAge(dateOfBirth: string): number {
   const monthDiff = now.getMonth() - dob.getMonth();
   if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) age -= 1;
   return age;
+}
+
+// Mirrors EventServiceImpl.resolveEventsInScope - viewChapter tier and the no-tier floor collapse
+// to the same "own chapter" filter here too (every mock chapter shares one mock state, same
+// simplification the /families handler above already makes for its own state tier).
+function resolveEventsInScope(caller: DecodedMockToken, permissions: string[]): EventItem[] {
+  if (permissions.includes('VIEW_ALL_EVENTS')) return events;
+  return events.filter((e) => e.chapterId === caller.chapterId);
+}
+
+function matchesEventFilters(
+  event: EventItem,
+  filters: { search?: string | null; category?: string | null; timeframe?: string | null; status?: string | null },
+): boolean {
+  const search = filters.search?.toLowerCase();
+  if (search && !(event.title.toLowerCase().includes(search) || (event.description ?? '').toLowerCase().includes(search))) {
+    return false;
+  }
+  if (filters.category && event.category?.toLowerCase() !== filters.category.toLowerCase()) return false;
+  if (filters.timeframe) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (filters.timeframe === 'UPCOMING' && event.eventDate < today) return false;
+    if (filters.timeframe === 'PAST' && event.eventDate >= today) return false;
+  }
+  if (filters.status && event.status !== filters.status) return false;
+  return true;
+}
+
+function applyEventStatus(eventId: string, status: EventStatus) {
+  const event = events.find((e) => e.id === eventId);
+  if (!event) return HttpResponse.json({ message: 'Event not found' }, { status: 404 });
+  event.status = status;
+  event.updatedAt = new Date().toISOString();
+  return HttpResponse.json(event, { status: 200 });
+}
+
+// India FY (Apr-Mar), start-year form - mirrors backend/membership-service's FinancialYearUtil.
+// Duplicated here rather than imported (mock handlers don't import page-level utilities) - kept in
+// step by hand, the same way MOCK_ROLE_PERMISSIONS is kept in step with the real RBAC migration.
+function currentFinancialYear(date: Date = new Date()): number {
+  const month = date.getMonth() + 1;
+  return month >= 4 ? date.getFullYear() : date.getFullYear() - 1;
+}
+
+let nextTransactionId = mockFamilies.length + 1;
+
+// One seed transaction (family-1, last FY) so the mock demonstrates PENDING_RENEWAL out of the
+// box; family-2 has none, so it starts EXPIRED. Mutable so RecordTransactionDialog's create/edit
+// flows persist for the session, same pattern as `families` above.
+const membershipTransactions: MembershipTransaction[] = [
+  {
+    id: 'txn-1',
+    familyId: 'family-1',
+    financialYear: currentFinancialYear() - 1,
+    amount: 250,
+    paymentDate: `${currentFinancialYear() - 1}-05-01`,
+    paymentMode: 'CASH',
+    transactionRef: 'TXN-SEED-1',
+    remarks: null,
+    createdBy: null,
+    createdAt: `${currentFinancialYear() - 1}-05-01T00:00:00Z`,
+    updatedBy: null,
+    updatedAt: null,
+  },
+];
+
+// Mirrors MembershipServiceImpl.computeStatus's grace-period rule exactly (paid targetFy ->
+// ACTIVE; paid only the immediately preceding FY -> PENDING_RENEWAL; otherwise EXPIRED) - same
+// "kept in step by hand" duplication as MOCK_ROLE_PERMISSIONS's relationship to the real RBAC
+// migration, flagged here for the same reason.
+function computeMockStatus(familyId: string, targetFy: number): MembershipStatusSummary {
+  const rows = membershipTransactions.filter((t) => t.familyId === familyId);
+  const targetRow = rows.find((t) => t.financialYear === targetFy);
+  const paidYearsUpToTarget = rows.filter((t) => t.financialYear <= targetFy).map((t) => t.financialYear);
+  const lastPaidYear = paidYearsUpToTarget.length > 0 ? Math.max(...paidYearsUpToTarget) : null;
+  const lastPaidRow = lastPaidYear !== null ? rows.find((t) => t.financialYear === lastPaidYear) ?? null : null;
+
+  let status: MembershipStatus;
+  if (targetRow) {
+    status = 'ACTIVE';
+  } else if (lastPaidYear !== null && lastPaidYear === targetFy - 1) {
+    status = 'PENDING_RENEWAL';
+  } else {
+    status = 'EXPIRED';
+  }
+
+  return {
+    familyId,
+    status,
+    currentFinancialYear: targetFy,
+    currentFinancialYearPaid: Boolean(targetRow),
+    lastPaymentDate: lastPaidRow?.paymentDate ?? null,
+    lastPaidFinancialYear: lastPaidYear,
+  };
 }
 
 // A structurally valid JWT (base64url, matching fixtures.ts's buildMockJwt) for the account that
@@ -380,6 +500,20 @@ export const handlers = [
       // never drift from what "own family" actually means.
       scoped = families.filter((f) => isOwnFamily(f, { id: caller.sub, email: caller.email }));
     }
+
+    // Optional search params, same three FamilyController#listFamilies added for
+    // RecordTransactionDialog's family search - each is independently optional and ANDed
+    // together (a blank/absent one imposes no filter), matching family-service's own semantics
+    // (FamilyServiceImpl#applySearchFilters) exactly - NOT an OR/"any field matches" search.
+    const url = new URL(request.url);
+    const headOfFamilyName = (url.searchParams.get('headOfFamilyName') || '').toLowerCase();
+    const mobileNumber = url.searchParams.get('mobileNumber') || '';
+    const areaLocality = (url.searchParams.get('areaLocality') || '').toLowerCase();
+    scoped = scoped
+      .filter((f) => !headOfFamilyName || f.headOfFamilyName.toLowerCase().includes(headOfFamilyName))
+      .filter((f) => !mobileNumber || (f.mobileNumber || '').includes(mobileNumber))
+      .filter((f) => !areaLocality || (f.areaLocality || '').toLowerCase().includes(areaLocality));
+
     return HttpResponse.json(scoped, { status: 200 });
   }),
 
@@ -478,44 +612,145 @@ export const handlers = [
   ),
   http.post('/api/v1/families/:familyId/photo', () => new HttpResponse(null, { status: 204 })),
 
-  // Membership
-  http.get('/api/v1/memberships/collection', () =>
-    HttpResponse.json(
-      mockBranches.map((branch) => ({
-        chapterId: branch.id,
-        chapterName: branch.name,
-        totalCollected: 45000,
-        familiesPaid: 18,
-        familiesPending: 4,
-      })),
-      { status: 200 },
-    ),
-  ),
-  http.get('/api/v1/memberships/:familyId/payments', () => HttpResponse.json([], { status: 200 })),
-  http.get('/api/v1/memberships/:familyId', ({ params }) =>
-    HttpResponse.json(
+  // Membership - see MembershipController's real endpoint table; own-family/transaction-history
+  // reads don't narrow by caller here (families are already the full mock set), which is fine for
+  // dev:mock/component tests since the real isolation guarantee is backend-owned and already
+  // covered by MembershipControllerTest/MembershipServiceImplTest - this mock only needs to look
+  // plausible, not re-prove the RBAC contract.
+  http.get('/api/v1/memberships/family/:familyId/status', ({ params }) => {
+    const familyId = params.familyId as string;
+    if (!families.some((f) => f.id === familyId)) {
+      return HttpResponse.json({ message: 'Family not found' }, { status: 404 });
+    }
+    return HttpResponse.json(computeMockStatus(familyId, currentFinancialYear()), { status: 200 });
+  }),
+
+  http.get('/api/v1/memberships/family/:familyId/transactions', ({ params }) => {
+    const familyId = params.familyId as string;
+    const rows = membershipTransactions
+      .filter((t) => t.familyId === familyId)
+      .sort((a, b) => b.paymentDate.localeCompare(a.paymentDate));
+    return HttpResponse.json(rows, { status: 200 });
+  }),
+
+  http.post('/api/v1/memberships/transactions', async ({ request }) => {
+    const body = (await request.json()) as RecordTransactionRequest;
+    const duplicate = membershipTransactions.some(
+      (t) => t.familyId === body.familyId && t.financialYear === body.financialYear,
+    );
+    if (duplicate) {
+      return HttpResponse.json(
+        { message: 'A transaction already exists for this family in this financial year' },
+        { status: 400 },
+      );
+    }
+    const now = new Date().toISOString();
+    const created: MembershipTransaction = {
+      id: `txn-${nextTransactionId++}`,
+      familyId: body.familyId,
+      financialYear: body.financialYear,
+      amount: body.amount,
+      paymentDate: body.paymentDate,
+      paymentMode: body.paymentMode,
+      transactionRef: body.transactionRef || null,
+      remarks: body.remarks || null,
+      createdBy: MOCK_USER_ID,
+      createdAt: now,
+      updatedBy: null,
+      updatedAt: null,
+    };
+    membershipTransactions.push(created);
+    return HttpResponse.json(created, { status: 201 });
+  }),
+
+  http.put('/api/v1/memberships/transactions/:transactionId', async ({ params, request }) => {
+    const body = (await request.json()) as UpdateTransactionRequest;
+    const transaction = membershipTransactions.find((t) => t.id === params.transactionId);
+    if (!transaction) return HttpResponse.json({ message: 'Transaction not found' }, { status: 404 });
+    transaction.amount = body.amount;
+    transaction.paymentDate = body.paymentDate;
+    transaction.paymentMode = body.paymentMode;
+    transaction.transactionRef = body.transactionRef || null;
+    transaction.remarks = body.remarks || null;
+    transaction.updatedBy = MOCK_USER_ID;
+    transaction.updatedAt = new Date().toISOString();
+    return HttpResponse.json(transaction, { status: 200 });
+  }),
+
+  http.get('/api/v1/memberships/members', ({ request }) => {
+    const url = new URL(request.url);
+    const financialYear = Number(url.searchParams.get('financialYear')) || currentFinancialYear();
+    const statusFilter = url.searchParams.get('status') as MembershipStatus | null;
+    const rows = families
+      .map((f) => computeMockStatus(f.id, financialYear))
+      .filter((row) => !statusFilter || row.status === statusFilter);
+    return HttpResponse.json(rows, { status: 200 });
+  }),
+
+  http.get('/api/v1/memberships/reports/pending', ({ request }) => {
+    const url = new URL(request.url);
+    const financialYear = Number(url.searchParams.get('financialYear')) || currentFinancialYear();
+    const familyIdQuery = (url.searchParams.get('familyId') || '').toLowerCase();
+    const headOfFamilyNameQuery = (url.searchParams.get('headOfFamilyName') || '').toLowerCase();
+    const mobileNumberQuery = url.searchParams.get('mobileNumber') || '';
+    const areaLocalityQuery = (url.searchParams.get('areaLocality') || '').toLowerCase();
+
+    const rows = families
+      .filter((f) => !headOfFamilyNameQuery || f.headOfFamilyName.toLowerCase().includes(headOfFamilyNameQuery))
+      .filter((f) => !mobileNumberQuery || (f.mobileNumber || '').includes(mobileNumberQuery))
+      .filter((f) => !areaLocalityQuery || (f.areaLocality || '').toLowerCase().includes(areaLocalityQuery))
+      .filter((f) => !familyIdQuery || f.familyCode.toLowerCase().includes(familyIdQuery))
+      .map((f) => {
+        const status = computeMockStatus(f.id, financialYear);
+        return {
+          familyId: f.id,
+          familyCode: f.familyCode,
+          headOfFamilyName: f.headOfFamilyName,
+          mobileNumber: f.mobileNumber || null,
+          areaLocality: f.areaLocality || null,
+          chapterId: f.chapterId,
+          chapterName: f.branch?.name ?? null,
+          status: status.status,
+          lastPaidFinancialYear: status.lastPaidFinancialYear,
+          lastPaymentDate: status.lastPaymentDate,
+        };
+      })
+      .filter((row) => row.status !== 'ACTIVE');
+
+    return HttpResponse.json(rows, { status: 200 });
+  }),
+
+  http.get('/api/v1/memberships/reports/collection-summary', ({ request }) => {
+    const url = new URL(request.url);
+    const financialYear = Number(url.searchParams.get('financialYear')) || currentFinancialYear();
+    const chapter = mockBranches[0];
+
+    let familiesActive = 0;
+    let familiesPending = 0;
+    let familiesExpired = 0;
+    for (const family of families) {
+      const status = computeMockStatus(family.id, financialYear).status;
+      if (status === 'ACTIVE') familiesActive += 1;
+      else if (status === 'PENDING_RENEWAL') familiesPending += 1;
+      else familiesExpired += 1;
+    }
+    const totalCollected = membershipTransactions
+      .filter((t) => t.financialYear === financialYear)
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    return HttpResponse.json(
       {
-        familyId: params.familyId,
-        status: 'ACTIVE',
-        annualFee: 1200,
-        lastPaymentDate: '2026-04-01',
-        nextDueDate: '2027-04-01',
+        chapterId: chapter?.id ?? '',
+        chapterName: chapter?.name ?? null,
+        financialYear,
+        totalCollected,
+        familiesActive,
+        familiesPending,
+        familiesExpired,
       },
       { status: 200 },
-    ),
-  ),
-  http.post('/api/v1/memberships/:familyId/renew', ({ params }) =>
-    HttpResponse.json(
-      {
-        familyId: params.familyId,
-        status: 'ACTIVE',
-        annualFee: 1200,
-        lastPaymentDate: new Date().toISOString().slice(0, 10),
-        nextDueDate: '2028-04-01',
-      },
-      { status: 200 },
-    ),
-  ),
+    );
+  }),
 
   // Matrimony
   http.get('/api/v1/matrimony/consent/me', () =>
@@ -548,22 +783,145 @@ export const handlers = [
   http.post('/api/v1/matrimony/consent/me/erasure-request', () => new HttpResponse(null, { status: 204 })),
   http.get('/api/v1/matrimony/directory', () => HttpResponse.json([], { status: 200 })),
 
-  // Events
-  http.get('/api/v1/events', () => HttpResponse.json([], { status: 200 })),
-  http.post('/api/v1/events/:eventId/register', ({ params }) =>
-    HttpResponse.json(
-      {
-        id: params.eventId,
-        name: 'Sample Event',
-        eventDate: new Date().toISOString(),
-        location: 'Community Hall',
-        description: '',
-        chapterName: mockBranches[0]?.name ?? '',
-        capacity: 100,
-        registeredCount: 1,
-      },
-      { status: 200 },
-    ),
+  // Events - see EventController's real endpoint table; member-facing browse always forces
+  // status=PUBLISHED regardless of what a caller passes, matching EventServiceImpl.listPublishedEvents.
+  http.get('/api/v1/events', ({ request }) => {
+    const caller = decodeMockToken(request.headers.get('Authorization'));
+    const permissions = MOCK_ROLE_PERMISSIONS[caller.role] ?? MOCK_ROLE_PERMISSIONS.USER ?? [];
+    const url = new URL(request.url);
+    const rows = resolveEventsInScope(caller, permissions)
+      .filter((e) => e.status === 'PUBLISHED')
+      .filter((e) =>
+        matchesEventFilters(e, {
+          search: url.searchParams.get('search'),
+          category: url.searchParams.get('category'),
+          timeframe: url.searchParams.get('timeframe'),
+        }),
+      );
+    return HttpResponse.json(rows, { status: 200 });
+  }),
+
+  http.get('/api/v1/events/admin', ({ request }) => {
+    const caller = decodeMockToken(request.headers.get('Authorization'));
+    const permissions = MOCK_ROLE_PERMISSIONS[caller.role] ?? MOCK_ROLE_PERMISSIONS.USER ?? [];
+    const url = new URL(request.url);
+    const rows = resolveEventsInScope(caller, permissions).filter((e) =>
+      matchesEventFilters(e, {
+        search: url.searchParams.get('search'),
+        category: url.searchParams.get('category'),
+        timeframe: url.searchParams.get('timeframe'),
+        status: url.searchParams.get('status'),
+      }),
+    );
+    return HttpResponse.json(rows, { status: 200 });
+  }),
+
+  http.get('/api/v1/events/:eventId', ({ params, request }) => {
+    const caller = decodeMockToken(request.headers.get('Authorization'));
+    const permissions = MOCK_ROLE_PERMISSIONS[caller.role] ?? MOCK_ROLE_PERMISSIONS.USER ?? [];
+    const event = events.find((e) => e.id === params.eventId);
+    if (!event) return HttpResponse.json({ message: 'Event not found' }, { status: 404 });
+    const canManage = permissions.includes('MANAGE_EVENTS');
+    if (event.status !== 'PUBLISHED' && !canManage) {
+      return HttpResponse.json({ message: 'Event not found' }, { status: 404 });
+    }
+    return HttpResponse.json(event, { status: 200 });
+  }),
+
+  http.post('/api/v1/events', async ({ request }) => {
+    const caller = decodeMockToken(request.headers.get('Authorization'));
+    const body = (await request.json()) as CreateEventRequest;
+    const now = new Date().toISOString();
+    const created: EventItem = {
+      id: `event-${nextEventId++}`,
+      chapterId: caller.chapterId,
+      chapterName: mockBranches.find((b) => b.id === caller.chapterId)?.name ?? null,
+      title: body.title,
+      description: body.description || null,
+      category: body.category || null,
+      eventDate: body.eventDate,
+      startTime: body.startTime,
+      endTime: body.endTime,
+      location: body.location || null,
+      organizerName: body.organizerName || null,
+      contactDetails: body.contactDetails || null,
+      status: 'DRAFT',
+      hasBanner: false,
+      createdBy: caller.sub,
+      createdAt: now,
+      updatedBy: null,
+      updatedAt: null,
+    };
+    events.push(created);
+    return HttpResponse.json(created, { status: 201 });
+  }),
+
+  http.put('/api/v1/events/:eventId', async ({ params, request }) => {
+    const caller = decodeMockToken(request.headers.get('Authorization'));
+    const body = (await request.json()) as CreateEventRequest;
+    const event = events.find((e) => e.id === params.eventId);
+    if (!event) return HttpResponse.json({ message: 'Event not found' }, { status: 404 });
+    event.title = body.title;
+    event.description = body.description || null;
+    event.category = body.category || null;
+    event.eventDate = body.eventDate;
+    event.startTime = body.startTime;
+    event.endTime = body.endTime;
+    event.location = body.location || null;
+    event.organizerName = body.organizerName || null;
+    event.contactDetails = body.contactDetails || null;
+    event.updatedBy = caller.sub;
+    event.updatedAt = new Date().toISOString();
+    return HttpResponse.json(event, { status: 200 });
+  }),
+
+  http.delete('/api/v1/events/:eventId', ({ params }) => {
+    const index = events.findIndex((e) => e.id === params.eventId);
+    if (index === -1) return HttpResponse.json({ message: 'Event not found' }, { status: 404 });
+    events.splice(index, 1);
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.post('/api/v1/events/:eventId/publish', ({ params }) => applyEventStatus(params.eventId as string, 'PUBLISHED')),
+  http.post('/api/v1/events/:eventId/unpublish', ({ params }) => applyEventStatus(params.eventId as string, 'DRAFT')),
+  http.post('/api/v1/events/:eventId/cancel', ({ params }) => applyEventStatus(params.eventId as string, 'CANCELLED')),
+
+  // familyId-based, matching RegisterFamilyRequest - see eventsApi.ts's comment on why this
+  // replaced the old attendeeCount model (zero backend support, wrong endpoint/payload shape).
+  http.post('/api/v1/events/:eventId/registrations', async ({ params, request }) => {
+    const eventId = params.eventId as string;
+    const event = events.find((e) => e.id === eventId);
+    if (!event) return HttpResponse.json({ message: 'Event not found' }, { status: 404 });
+    if (event.status !== 'PUBLISHED') {
+      return HttpResponse.json({ message: 'Cannot register for an event that is not published' }, { status: 400 });
+    }
+    const body = (await request.json()) as RegisterEventRequest;
+    if (eventRegistrations.some((r) => r.eventId === eventId && r.familyId === body.familyId)) {
+      return HttpResponse.json({ message: 'Family already registered for this event' }, { status: 400 });
+    }
+    const created: EventRegistration = {
+      id: `registration-${nextRegistrationId++}`,
+      eventId,
+      familyId: body.familyId,
+      registeredAt: new Date().toISOString(),
+    };
+    eventRegistrations.push(created);
+    return HttpResponse.json(created, { status: 201 });
+  }),
+
+  http.get('/api/v1/events/:eventId/registrations', ({ params }) => {
+    const rows = eventRegistrations.filter((r) => r.eventId === params.eventId);
+    return HttpResponse.json(rows, { status: 200 });
+  }),
+
+  http.post('/api/v1/events/:eventId/banner', ({ params }) => {
+    const event = events.find((e) => e.id === params.eventId);
+    if (event) event.hasBanner = true;
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.get('/api/v1/events/:eventId/banner', () =>
+    HttpResponse.json({ message: 'No banner uploaded' }, { status: 404 }),
   ),
 
   // Analytics

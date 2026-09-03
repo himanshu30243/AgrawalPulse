@@ -111,7 +111,21 @@ export function AppRoutes() {
             </ProtectedRoute>
           }
         />
-        <Route path="/membership" element={<MembershipPage />} />
+        {/*
+          Previously ungated (unlike every other permission-sensitive route) despite the page
+          itself gating admin-only tabs internally via useMembershipPermissions - the route guard
+          now matches that same base permission (VIEW_MEMBERSHIP, held by every authenticated
+          role) so an unauthenticated deep-link redirects to /login instead of rendering a blank
+          "my status" tab with no data.
+        */}
+        <Route
+          path="/membership"
+          element={
+            <ProtectedRoute permission={PERMISSIONS.viewMembership}>
+              <MembershipPage />
+            </ProtectedRoute>
+          }
+        />
         {/*
           Per docs/api-specifications.md, consent (POST/DELETE
           /matrimony/consent) is "self or guardian (MEMBER)" — any
