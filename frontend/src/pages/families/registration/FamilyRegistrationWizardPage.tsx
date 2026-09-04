@@ -14,6 +14,7 @@ import Alert from '@mui/material/Alert';
 import Snackbar from '@mui/material/Snackbar';
 import { familiesApi } from '@/api/familiesApi';
 import { branchesApi } from '@/api/branchesApi';
+import { usersApi } from '@/api/usersApi';
 import { useAuth } from '@/auth/useAuth';
 import { useFamilyPermissions } from '@/auth/useFamilyPermissions';
 import { isAlphabeticName, isValidAadhaar, isValidEmail, isValidIndianPhone, isValidPinCode } from '@/utils/validators';
@@ -140,6 +141,34 @@ export default function FamilyRegistrationWizardPage() {
       .list()
       .then((branches) => setMyBranch(branches.find((b) => b.id === user.chapterId) ?? null))
       .catch(() => setMyBranch(null));
+  }, [user]);
+
+  // Prefills the head-of-family step from what the account already gave at sign-up, so the
+  // registrant isn't asked to retype their own name/mobile/email. Only fills fields that are
+  // still blank (checked against the latest state at resolve time, not what it was when the
+  // effect ran) - a saved draft or anything the user already typed is left alone.
+  useEffect(() => {
+    if (!user) return;
+    usersApi
+      .getMe()
+      .then((profile) => {
+        setValues((prev) => {
+          if (prev.headFirstName || prev.mobileNumber) return prev;
+          return {
+            ...prev,
+            headFirstName: profile.firstName ?? prev.headFirstName,
+            headMiddleName: profile.middleName ?? prev.headMiddleName,
+            headLastName: profile.lastName ?? prev.headLastName,
+            headGender: profile.gender ?? prev.headGender,
+            headDateOfBirth: profile.dateOfBirth ?? prev.headDateOfBirth,
+            mobileNumber: profile.mobileNumber ?? prev.mobileNumber,
+            email: profile.email || prev.email,
+          };
+        });
+      })
+      // Prefill is a convenience, not a requirement - the wizard works fine with blank fields
+      // if this fails (e.g. a transient network issue).
+      .catch(() => {});
   }, [user]);
 
   useEffect(() => {

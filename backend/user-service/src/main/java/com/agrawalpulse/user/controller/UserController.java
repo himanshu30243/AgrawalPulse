@@ -66,6 +66,17 @@ public class UserController {
         return userService.getUser(tenant.requireChapterId(), userId);
     }
 
+    // Self-only, no permission gate needed beyond "authenticated" - same reasoning as PUT
+    // /me/chapter below. Lets clients that only hold the JWT's minimal claims (sub/email/
+    // chapter_id/roles - see AuthUser) fetch the rest of the caller's own profile, e.g. the family
+    // registration wizard prefilling the head-of-family step from what was captured at sign-up
+    // instead of asking the user to retype their own name/mobile/email.
+    @GetMapping("/me")
+    public UserDto getOwnProfile() {
+        TenantContext tenant = tenantResolver.resolve();
+        return userService.getOwnProfile(tenant.requireUserId());
+    }
+
     // Was PUT /{userId}/roles taking a set - a user holds exactly one role since V2.
     @PutMapping("/{userId}/role")
     @PreAuthorize("hasAuthority('PERM_MANAGE_USERS')")

@@ -466,6 +466,26 @@ export const handlers = [
 
   http.get('/api/v1/users', () => HttpResponse.json(adminUsers, { status: 200 })),
 
+  // Backs the family registration wizard's head-of-family prefill (usersApi.getMe). A static
+  // stand-in is enough here - no test asserts on these particular values, only that the wizard
+  // still renders/behaves correctly once this call resolves.
+  http.get('/api/v1/users/me', () =>
+    HttpResponse.json(
+      {
+        id: 'test-user',
+        chapterId: 'chapter-1',
+        firstName: null,
+        middleName: null,
+        lastName: null,
+        dateOfBirth: null,
+        gender: null,
+        mobileNumber: null,
+        email: 'test-user@example.com',
+      },
+      { status: 200 },
+    ),
+  ),
+
   http.put('/api/v1/users/:userId/role', async ({ params, request }) => {
     const body = (await request.json()) as { roleCode: string };
     const user = adminUsers.find((u) => u.id === params.userId);

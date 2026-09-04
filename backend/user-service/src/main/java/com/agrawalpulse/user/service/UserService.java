@@ -25,6 +25,14 @@ public interface UserService {
 
     UserDto getUser(UUID chapterId, UUID userId);
 
+    // Self-only by construction, same reasoning as updateOwnChapter below - userId always comes
+    // from the caller's own JWT (see UserController's GET /me), never from a path/body value, so
+    // this can never be used to read someone else's profile. Unlike getUser above, this isn't
+    // scoped by chapter: a brand-new account may still be on the "Unassigned" placeholder chapter
+    // when it calls this (e.g. the family registration wizard prefilling the head-of-family step
+    // from the account's own sign-up details).
+    UserDto getOwnProfile(UUID userId);
+
     UserDto getByEmail(String email);
 
     List<UserDto> listUsersForChapter(UUID chapterId);

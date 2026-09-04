@@ -107,6 +107,14 @@ class UserServiceImpl implements UserService {
 
     @Override
     @Transactional(readOnly = true)
+    public UserDto getOwnProfile(UUID userId) {
+        return userRepository.findById(userId)
+                .map(this::toDto)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public UserDto getByEmail(String email) {
         return userRepository.findByEmail(email)
                 .map(this::toDto)

@@ -3,6 +3,8 @@ package com.agrawalpulse.user.controller;
 import com.agrawalpulse.common.security.SecurityConfig;
 import com.agrawalpulse.common.tenant.CurrentTenantResolver;
 import com.agrawalpulse.common.tenant.TenantContext;
+import com.agrawalpulse.user.dto.UserDto;
+import com.agrawalpulse.user.entity.UserStatus;
 import com.agrawalpulse.user.service.UserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -16,13 +18,17 @@ import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 // First test class UserController has had - scoped to the new self-only /me/chapter endpoint
@@ -85,5 +91,31 @@ class UserControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getOwnProfile_withoutAuthentication_returns401() throws Exception {
+        mockMvc.perform(get("/api/v1/users/me"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void getOwnProfile_returnsTheCallersOwnRecord_regardlessOfWhatElseIsInTheToken() throws Exception {
+        UUID callerId = UUID.randomUUID();
+        UUID chapterId = UUID.randomUUID();
+        when(tenantResolver.resolve()).thenReturn(new TenantContext(callerId, chapterId, false, false));
+        when(userService.getOwnProfile(callerId)).thenReturn(new UserDto(
+                callerId, chapterId, "Rajesh", null, "Agrawal", null, null,
+                "9876543210", "rajesh@example.com", null, UserStatus.ACTIVE, null,
+                Instant.now(), Instant.now()));
+
+        mockMvc.perform(get("/api/v1/users/me").with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.firstName", is("Rajesh")))
+                .andExpect(jsonPath("$.mobileNumber", is("9876543210")));
+
+        // The profile always comes from the resolved tenant (the caller's own JWT subject), never
+        // from a path/body value - there is no userId parameter on this endpoint to send one through.
+        verify(userService).getOwnProfile(eq(callerId));
     }
 }
