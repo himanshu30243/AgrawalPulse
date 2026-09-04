@@ -19,7 +19,7 @@ global:
   # Bumped by .github/workflows/ci-cd.yml after it builds+pushes every image from the same
   # commit - the whole reactor ships as one versioned release, matching how the multi-module
   # Maven build already versions every module together (0.1.0-SNAPSHOT).
-  imageTag: 00197565dbb285d4b486492786437172a97ce2bd
+  imageTag: 7ac1615c83df95e10fa89c9498f1bb4942aadc26
   imagePullPolicy: IfNotPresent
 
   eurekaUrl: http://eureka-server:8761/eureka/
