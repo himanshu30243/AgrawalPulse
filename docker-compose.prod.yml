@@ -1,0 +1,141 @@
+# Single-EC2-instance production deployment (see docs/microservices-contract.md's "Local
+# development" nginx-stand-in-gateway model - reused here rather than the not-yet-built
+# ECS/Terraform model, since this is one box, not a cluster).
+#
+# Differences from docker-compose.yml (local dev):
+#   - Omits redis/dynamodb-local/opensearch/localstack: nothing here actually depends on them at
+#     runtime. analytics-service's Redis cache backs off entirely under the "local" Spring
+#     profile (see CacheConfig.java) - dynamodb-local/opensearch/localstack have no callers in
+#     any service's "local" profile. Kept out to save the box's limited RAM.
+#   - Adds the `frontend` service (dev normally runs it via `npm run dev`, not compose).
+#   - Nothing but `frontend` publishes a host port - postgres and every backend service are
+#     reachable only from other containers on the compose network, not from the internet.
+#   - POSTGRES_PASSWORD / LOCAL_JWT_SECRET come from a `.env` file (see .env.prod.example)
+#     instead of the hardcoded dev values - required for anything reachable from the public
+#     internet, even over plain HTTP.
+#
+# Usage on the EC2 host:
+#   cp .env.prod.example .env   # then fill in real values
+#   docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: agrawalpulse
+      POSTGRES_USER: agrawalpulse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - agrawalpulse_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agrawalpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  user-service:
+    build: { context: ./backend, dockerfile: user-service/Dockerfile }
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/agrawalpulse
+      SPRING_DATASOURCE_USERNAME: agrawalpulse
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET}
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+
+  family-service:
+    build: { context: ./backend, dockerfile: family-service/Dockerfile }
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/agrawalpulse
+      SPRING_DATASOURCE_USERNAME: agrawalpulse
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET}
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+
+  membership-service:
+    build: { context: ./backend, dockerfile: membership-service/Dockerfile }
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/agrawalpulse
+      SPRING_DATASOURCE_USERNAME: agrawalpulse
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET}
+      FAMILY_SERVICE_URL: http://family-service:8082
+    depends_on:
+      postgres: { condition: service_healthy }
+      family-service: { condition: service_started }
+    restart: unless-stopped
+
+  matrimony-service:
+    build: { context: ./backend, dockerfile: matrimony-service/Dockerfile }
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/agrawalpulse
+      SPRING_DATASOURCE_USERNAME: agrawalpulse
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET}
+      FAMILY_SERVICE_URL: http://family-service:8082
+    depends_on:
+      postgres: { condition: service_healthy }
+      family-service: { condition: service_started }
+    restart: unless-stopped
+
+  event-service:
+    build: { context: ./backend, dockerfile: event-service/Dockerfile }
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/agrawalpulse
+      SPRING_DATASOURCE_USERNAME: agrawalpulse
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET}
+      FAMILY_SERVICE_URL: http://family-service:8082
+    depends_on:
+      postgres: { condition: service_healthy }
+      family-service: { condition: service_started }
+    restart: unless-stopped
+
+  analytics-service:
+    build: { context: ./backend, dockerfile: analytics-service/Dockerfile }
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/agrawalpulse
+      SPRING_DATASOURCE_USERNAME: agrawalpulse
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET}
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+
+  # Local-gateway stand-in (see nginx/local-gateway.conf) - internal only, the frontend
+  # container is the sole caller.
+  api-gateway:
+    image: nginx:alpine
+    volumes:
+      - ./nginx/local-gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - user-service
+      - family-service
+      - membership-service
+      - matrimony-service
+      - event-service
+      - analytics-service
+    restart: unless-stopped
+
+  frontend:
+    build: { context: ./frontend, dockerfile: Dockerfile }
+    environment:
+      API_GATEWAY_HOST: api-gateway:8080
+    ports:
+      - "80:80"
+    depends_on:
+      - api-gateway
+    restart: unless-stopped
+
+volumes:
+  agrawalpulse_postgres:
