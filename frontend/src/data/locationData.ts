@@ -1,9 +1,23 @@
-// Static India-only country/state/district reference data for the family registration wizard's
-// cascading Address dropdowns (frontend/docs/family-registration.md Step 2). Deliberately a
-// pragmatic starting subset, not an exhaustive master-data table (India has 700+ real districts)
-// - no backend master-data service exists or is planned for this; extend this list as chapters
-// actually need districts it's missing.
-export const COUNTRIES = ['India'] as const;
+// Static country/state/district reference data for the family registration wizard's Address step
+// (frontend/docs/family-registration.md Step 2). India gets PIN-code-driven auto-fill instead of
+// this list now (see AddressStep.tsx / familiesApi.lookupPincode) - STATES_BY_COUNTRY/
+// DISTRICTS_BY_STATE below only remain as the fallback when that lookup fails or is unreachable.
+// Deliberately a pragmatic starting subset, not an exhaustive master-data table (India has 700+
+// real districts) - extend this list as chapters actually need districts it's missing.
+//
+// Non-India entries exist so NRI/diaspora families can actually select their country (previously
+// 'India' was the only option in this list at all) - State/City are plain free-text for every
+// non-India country rather than another cascading dropdown, since we hold no data for them.
+export const COUNTRIES = [
+  'India',
+  'United States',
+  'United Kingdom',
+  'Canada',
+  'Australia',
+  'United Arab Emirates',
+  'Singapore',
+  'Other',
+] as const;
 
 export const STATES_BY_COUNTRY: Record<string, string[]> = {
   India: [

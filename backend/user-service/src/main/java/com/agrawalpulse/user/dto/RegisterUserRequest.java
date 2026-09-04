@@ -16,6 +16,12 @@ import java.time.LocalDate;
  * only optional field; deliberately has no @Pattern of its own (an omitted-vs-blank optional
  * string is exactly the regression class documented on FamilyController's blank-fields test -
  * validated only if non-blank, in UserServiceImpl).
+ *
+ * <p>No city/state here - the account starts on a placeholder "Unassigned" chapter (see
+ * UserServiceImpl#registerUser) and gets its real chapter assigned when the person registers
+ * their family, where an address is actually collected (FamilyServiceImpl#createFamily). Asking
+ * for location twice (once for the account, once for the family) was the exact thing this
+ * removal was meant to fix.
  */
 public record RegisterUserRequest(
         @NotBlank @Pattern(regexp = "^[A-Za-z ]+$", message = "must contain alphabets only") String firstName,

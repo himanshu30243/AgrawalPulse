@@ -214,10 +214,17 @@ export default function FamilyRegistrationWizardPage() {
       // Reachable despite the pre-check whenever the count changed under us - a second tab, or an
       // admin registering on the user's behalf between page load and submit.
       const isRegistrationLimit = axios.isAxiosError(error) && error.response?.status === 409;
+      // Other failures (e.g. a duplicate mobile number, a validation error) get their specific
+      // backend message surfaced instead of a generic one - same pattern as RegistrationPage's
+      // signup form - so the user isn't left guessing which field/rule actually failed.
+      const backendMessage =
+        axios.isAxiosError(error) && typeof error.response?.data?.message === 'string'
+          ? error.response.data.message
+          : null;
       setSubmitError(
         isRegistrationLimit
           ? t('families.registrationLimitReached')
-          : t('families.registerError'),
+          : backendMessage ?? t('families.registerError'),
       );
     } finally {
       setIsSubmitting(false);

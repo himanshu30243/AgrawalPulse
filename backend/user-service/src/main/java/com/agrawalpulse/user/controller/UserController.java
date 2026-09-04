@@ -4,6 +4,7 @@ import com.agrawalpulse.common.tenant.CurrentTenantResolver;
 import com.agrawalpulse.common.tenant.TenantContext;
 import com.agrawalpulse.user.dto.CreateUserRequest;
 import com.agrawalpulse.user.dto.RegisterUserRequest;
+import com.agrawalpulse.user.dto.UpdateOwnChapterRequest;
 import com.agrawalpulse.user.dto.UpdateUserRoleRequest;
 import com.agrawalpulse.user.dto.UserDto;
 import com.agrawalpulse.user.service.UserService;
@@ -71,5 +72,16 @@ public class UserController {
     public UserDto updateRole(@PathVariable UUID userId, @Valid @RequestBody UpdateUserRoleRequest request) {
         TenantContext tenant = tenantResolver.resolve();
         return userService.updateRole(tenant.requireChapterId(), userId, request);
+    }
+
+    // Self-only, no permission gate needed beyond "authenticated" - the target user is always
+    // the caller's own id (tenant.requireUserId()), never taken from the URL/body, so this can
+    // never be used to reassign someone else's chapter. Backs family-service's createFamily flow:
+    // when a family owner's address resolves to a new/different chapter, their own account's
+    // chapter is synced to match (see family-service's UserClient#updateOwnChapter).
+    @PutMapping("/me/chapter")
+    public void updateOwnChapter(@Valid @RequestBody UpdateOwnChapterRequest request) {
+        TenantContext tenant = tenantResolver.resolve();
+        userService.updateOwnChapter(tenant.requireUserId(), request.chapterId());
     }
 }

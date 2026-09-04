@@ -1,5 +1,12 @@
 import { apiClient } from './axiosClient';
-import type { CreateFamilyMemberRequest, CreateFamilyRequest, Family, FamilyMember } from '@/types/domain';
+import type {
+  CreateFamilyMemberRequest,
+  CreateFamilyRequest,
+  Family,
+  FamilyMember,
+  PincodeLookupResult,
+  UpdateFamilyRequest,
+} from '@/types/domain';
 
 export interface FamilySearchFilters {
   headOfFamilyName?: string;
@@ -21,6 +28,10 @@ export const familiesApi = {
   },
   async register(request: CreateFamilyRequest): Promise<Family> {
     const { data } = await apiClient.post<Family>('/families', request);
+    return data;
+  },
+  async update(familyId: string, request: UpdateFamilyRequest): Promise<Family> {
+    const { data } = await apiClient.put<Family>(`/families/${familyId}`, request);
     return data;
   },
   async listMembers(familyId: string): Promise<FamilyMember[]> {
@@ -46,6 +57,17 @@ export const familiesApi = {
       return URL.createObjectURL(data as Blob);
     } catch {
       // No photo uploaded (404) or otherwise unavailable - callers show a placeholder instead.
+      return null;
+    }
+  },
+  // 404 (unknown PIN code) and any other failure (upstream down, network error) both resolve to
+  // null here rather than throwing - callers fall back to the manual State/District dropdowns in
+  // either case, so there's no reason to distinguish them at the call site.
+  async lookupPincode(pincode: string): Promise<PincodeLookupResult | null> {
+    try {
+      const { data } = await apiClient.get<PincodeLookupResult>(`/families/pincode/${pincode}`);
+      return data;
+    } catch {
       return null;
     }
   },

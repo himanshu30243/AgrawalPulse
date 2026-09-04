@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -47,6 +48,24 @@ public class BranchClient {
                     chapterId, ex.getMessage());
             return Optional.empty();
         }
+    }
+
+    // Unlike getBranch/listAll above, failures here are deliberately NOT swallowed: this backs
+    // editing a family's own city/state (see FamilyServiceImpl#updateFamily), and if chapter
+    // resolution fails mid-edit, silently keeping the family's old chapterId would leave it
+    // pointing at the wrong chapter for its new address - a real data-integrity problem, not a
+    // display nicety. Better to fail the whole edit and let the caller retry.
+    public BranchSummaryDto resolveOrCreateChapter(String city, String state) {
+        return restClient.post()
+                .uri("/api/v1/chapters/resolve")
+                .header(HttpHeaders.AUTHORIZATION, currentAuthorizationHeader())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new ResolveChapterRequest(city, state))
+                .retrieve()
+                .body(BranchSummaryDto.class);
+    }
+
+    private record ResolveChapterRequest(String city, String state) {
     }
 
     // Empty list on failure, not an exception: callers use this to compute a state's chapter set

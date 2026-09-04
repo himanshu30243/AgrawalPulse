@@ -8,6 +8,7 @@ import com.agrawalpulse.family.dto.CreateFamilyMemberRequest;
 import com.agrawalpulse.family.dto.CreateFamilyRequest;
 import com.agrawalpulse.family.dto.FamilyDto;
 import com.agrawalpulse.family.dto.FamilyMemberDto;
+import com.agrawalpulse.family.dto.UpdateFamilyRequest;
 import com.agrawalpulse.family.entity.RelationshipToHead;
 import com.agrawalpulse.family.entity.Samaj;
 import com.agrawalpulse.common.model.Gender;
@@ -44,6 +45,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -103,7 +105,7 @@ class FamilyControllerTest {
     void createFamily_succeedsForChapterAdmin() throws Exception {
         when(tenantResolver.resolve()).thenReturn(new TenantContext(UUID.randomUUID(), CHAPTER_ID, false, false));
         FamilyDto created = familyDto("Ramesh Agrawal");
-        when(familyService.createFamily(eq(CHAPTER_ID), any(), anyBoolean(), any(CreateFamilyRequest.class))).thenReturn(created);
+        when(familyService.createFamily(any(), anyBoolean(), any(CreateFamilyRequest.class))).thenReturn(created);
 
         mockMvc.perform(post("/api/v1/families")
                         .with(jwt().authorities(new SimpleGrantedAuthority("PERM_VIEW_FAMILY"),
@@ -125,7 +127,7 @@ class FamilyControllerTest {
         // minimalCreateRequest()'s use of null never exercised this path - this test uses blank
         // strings specifically to guard against that regression class.
         when(tenantResolver.resolve()).thenReturn(new TenantContext(UUID.randomUUID(), CHAPTER_ID, false, false));
-        when(familyService.createFamily(eq(CHAPTER_ID), any(), anyBoolean(), any(CreateFamilyRequest.class))).thenReturn(familyDto("Suresh Sharma"));
+        when(familyService.createFamily(any(), anyBoolean(), any(CreateFamilyRequest.class))).thenReturn(familyDto("Suresh Sharma"));
         CreateFamilyRequest request = new CreateFamilyRequest("Suresh", "", "Sharma", "", Gender.MALE,
                 LocalDate.of(1980, 1, 1), "9998887766", "", "", "1 Test Road", "India", "Madhya Pradesh", "Indore",
                 "Test Area", "452001", Samaj.AGRAWAL, "Garg", "Indore", "", "", null, false, false, false, false, false);
@@ -340,6 +342,51 @@ class FamilyControllerTest {
         mockMvc.perform(get("/api/v1/families/{familyId}/photo", FAMILY_ID)
                         .with(jwt().authorities(new SimpleGrantedAuthority("PERM_VIEW_FAMILY"))))
                 .andExpect(status().isNotFound());
+    }
+
+    private UpdateFamilyRequest minimalUpdateRequest() {
+        return new UpdateFamilyRequest("Ramesh", null, "Agrawal", "9876543210", null,
+                "India", "Madhya Pradesh", "Indore");
+    }
+
+    @Test
+    void updateFamily_withoutAuthentication_returns401() throws Exception {
+        mockMvc.perform(put("/api/v1/families/{familyId}", FAMILY_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(minimalUpdateRequest())))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void updateFamily_forbiddenWithoutEditFamilyPermission() throws Exception {
+        mockMvc.perform(put("/api/v1/families/{familyId}", FAMILY_ID)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("PERM_VIEW_FAMILY")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(minimalUpdateRequest())))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void updateFamily_succeedsForTheOwningMember() throws Exception {
+        when(tenantResolver.resolve()).thenReturn(new TenantContext(UUID.randomUUID(), CHAPTER_ID, false, false));
+        when(familyService.updateFamily(any(FamilyAccessScope.class), eq(FAMILY_ID), any(UpdateFamilyRequest.class)))
+                .thenReturn(familyDto("Suresh Sharma"));
+
+        mockMvc.perform(put("/api/v1/families/{familyId}", FAMILY_ID)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("PERM_EDIT_FAMILY")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(minimalUpdateRequest())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.headOfFamilyName").value("Suresh Sharma"));
+    }
+
+    @Test
+    void updateFamily_missingRequiredFields_returns400() throws Exception {
+        mockMvc.perform(put("/api/v1/families/{familyId}", FAMILY_ID)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("PERM_EDIT_FAMILY")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
     }
 
     // Every field marked @NotBlank/@NotNull on CreateFamilyRequest must be populated here - an

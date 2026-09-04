@@ -7,10 +7,8 @@ import com.agrawalpulse.user.dto.RoleSummaryDto;
 import com.agrawalpulse.user.dto.UpdateUserRoleRequest;
 import com.agrawalpulse.user.dto.UserDto;
 import com.agrawalpulse.user.entity.AppUser;
-import com.agrawalpulse.user.entity.Chapter;
 import com.agrawalpulse.user.entity.Role;
 import com.agrawalpulse.user.entity.UserRole;
-import com.agrawalpulse.user.repository.ChapterRepository;
 import com.agrawalpulse.user.repository.RoleRepository;
 import com.agrawalpulse.user.repository.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,16 +22,24 @@ import java.util.UUID;
 @Transactional
 class UserServiceImpl implements UserService {
 
+    // Deliberate, discoverable placeholder chapter every fresh sign-up starts on - not a real
+    // city/state, so it can never collide with a real resolveOrCreateChapter call and is easy to
+    // recognize (e.g. via listUnstaffedChapters). Corrected the moment the person registers a
+    // family, which is where an address is actually collected (see
+    // FamilyServiceImpl#createFamily / UserController's PUT /me/chapter).
+    private static final String UNASSIGNED_CITY = "Unassigned";
+    private static final String UNASSIGNED_STATE = "Unassigned";
+
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
-    private final ChapterRepository chapterRepository;
+    private final ChapterService chapterService;
     private final PasswordEncoder passwordEncoder;
 
     UserServiceImpl(UserRepository userRepository, RoleRepository roleRepository,
-                     ChapterRepository chapterRepository, PasswordEncoder passwordEncoder) {
+                     ChapterService chapterService, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
-        this.chapterRepository = chapterRepository;
+        this.chapterService = chapterService;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -65,16 +71,15 @@ class UserServiceImpl implements UserService {
             throw new IllegalArgumentException("An account with this mobile number already exists.");
         }
 
-        // No chapter picker on the registration form (same "ask for nothing but what's needed"
-        // principle as local-auth/token's login form), so the account is provisionally assigned to
-        // the first configured chapter - an administrator reassigns it afterwards via User
-        // Management if that guess is wrong.
-        Chapter chapter = chapterRepository.findAll().stream().findFirst()
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "No chapters are configured yet. Please contact an administrator before registering."));
+        // No address is collected at sign-up (see RegisterUserRequest's comment) - every fresh
+        // account starts on one canonical placeholder chapter, reusing the exact same
+        // resolve-or-create call family registration uses for a real address. Corrected the
+        // moment the person registers a family (FamilyServiceImpl#createFamily calls back into
+        // PUT /me/chapter below).
+        UUID chapterId = chapterService.resolveOrCreateChapter(UNASSIGNED_CITY, UNASSIGNED_STATE).id();
 
         AppUser user = AppUser.builder()
-                .chapterId(chapter.getId())
+                .chapterId(chapterId)
                 .firstName(request.firstName().trim())
                 .middleName(blankToNull(request.middleName()))
                 .lastName(request.lastName().trim())
@@ -119,6 +124,15 @@ class UserServiceImpl implements UserService {
         AppUser user = findOwnedByChapter(chapterId, userId);
         user.setRole(requireRole(request.roleCode()));
         return toDto(user);
+    }
+
+    @Override
+    public void updateOwnChapter(UUID userId, UUID chapterId) {
+        // No chapter-ownership check needed (unlike findOwnedByChapter below) - userId always
+        // comes from the caller's own JWT, so this can only ever touch the caller's own row.
+        AppUser user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+        user.setChapterId(chapterId);
     }
 
     private Role requireRole(String roleCode) {

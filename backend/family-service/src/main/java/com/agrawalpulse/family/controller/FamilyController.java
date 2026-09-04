@@ -9,6 +9,7 @@ import com.agrawalpulse.family.dto.CreateFamilyMemberRequest;
 import com.agrawalpulse.family.dto.CreateFamilyRequest;
 import com.agrawalpulse.family.dto.FamilyDto;
 import com.agrawalpulse.family.dto.FamilyMemberDto;
+import com.agrawalpulse.family.dto.UpdateFamilyRequest;
 import com.agrawalpulse.family.service.FamilyAccessScope;
 import com.agrawalpulse.family.service.FamilyRegistrationLimitException;
 import com.agrawalpulse.family.service.FamilyService;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -54,7 +56,6 @@ public class FamilyController {
     public FamilyDto createFamily(@Valid @RequestBody CreateFamilyRequest request) {
         TenantContext tenant = tenantResolver.resolve();
         return familyService.createFamily(
-                tenant.requireChapterId(),
                 tenant.userId(),
                 tenant.hasPermission("CREATE_FAMILY_UNLIMITED"),
                 request);
@@ -82,6 +83,15 @@ public class FamilyController {
     @PreAuthorize("hasAuthority('PERM_VIEW_FAMILY')")
     public FamilyDto getFamily(@PathVariable UUID familyId) {
         return familyService.getFamily(resolveScope(), familyId);
+    }
+
+    // Head name/contact/location only - see UpdateFamilyRequest. Same permission and scope check
+    // as addFamilyMember/uploadFamilyPhoto below, so a plain family owner can edit their own
+    // family's own details, exactly as they already can add members or upload a photo to it.
+    @PutMapping("/{familyId}")
+    @PreAuthorize("hasAuthority('PERM_EDIT_FAMILY')")
+    public FamilyDto updateFamily(@PathVariable UUID familyId, @Valid @RequestBody UpdateFamilyRequest request) {
+        return familyService.updateFamily(resolveScope(), familyId, request);
     }
 
     @PostMapping("/{familyId}/members")

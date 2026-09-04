@@ -4,14 +4,18 @@ import com.agrawalpulse.common.exception.ResourceNotFoundException;
 import com.agrawalpulse.common.model.Gender;
 import com.agrawalpulse.common.model.MaritalStatus;
 import com.agrawalpulse.family.client.BranchClient;
+import com.agrawalpulse.family.client.UserClient;
 import com.agrawalpulse.family.dto.BranchSummaryDto;
 import com.agrawalpulse.family.dto.CreateFamilyMemberRequest;
 import com.agrawalpulse.family.dto.CreateFamilyRequest;
 import com.agrawalpulse.family.dto.FamilyDto;
 import com.agrawalpulse.family.dto.FamilyMemberDto;
+import com.agrawalpulse.family.dto.UpdateFamilyRequest;
 import com.agrawalpulse.family.entity.Family;
 import com.agrawalpulse.family.entity.FamilyMember;
 import com.agrawalpulse.family.entity.RelationshipToHead;
+import com.agrawalpulse.family.entity.Samaj;
+import com.agrawalpulse.family.repository.FamilyCodeSequenceRepository;
 import com.agrawalpulse.family.repository.FamilyMemberRepository;
 import com.agrawalpulse.family.repository.FamilyRepository;
 import com.agrawalpulse.family.storage.FamilyPhotoData;
@@ -32,6 +36,7 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -48,7 +53,7 @@ class FamilyServiceImplTest {
     // These tests exercise creation mechanics, not the per-user cap, so they pass
     // mayCreateMultiple=true. The cap itself is covered by its own tests at the bottom.
     private static final UUID OWNER_USER_ID = UUID.randomUUID();
-    private static final Pattern FAMILY_CODE_PATTERN = Pattern.compile("^FAM-[A-Z0-9]{8}$");
+    private static final Pattern FAMILY_CODE_PATTERN = Pattern.compile("^[A-Z]{3}-[A-Z]{3}-\\d{6}$");
 
     // Mirrors the old unconditional "caller's own chapter only" behavior these tests were written
     // against, now expressed as a scope. Scope-tier-specific behavior (own-only/state/all) gets its
@@ -67,14 +72,26 @@ class FamilyServiceImplTest {
     private BranchClient branchClient;
 
     @Mock
+    private UserClient userClient;
+
+    @Mock
     private FamilyPhotoStorage familyPhotoStorage;
+
+    @Mock
+    private FamilyCodeSequenceRepository familyCodeSequenceRepository;
 
     private FamilyServiceImpl familyService;
 
     @BeforeEach
     void setUp() {
-        familyService = new FamilyServiceImpl(familyRepository, familyMemberRepository, branchClient, familyPhotoStorage);
+        familyService = new FamilyServiceImpl(familyRepository, familyMemberRepository, branchClient, userClient,
+                familyPhotoStorage, familyCodeSequenceRepository);
         lenient().when(familyPhotoStorage.exists(any(UUID.class))).thenReturn(false);
+        // createFamily now always resolves a chapter via resolveOrCreateChapter (never a nullable
+        // Optional) - a harmless default so tests that don't care what chapter comes back (most
+        // of them) don't NPE; tests that DO care override this with their own when(...).
+        lenient().when(branchClient.resolveOrCreateChapter(any(), any()))
+                .thenReturn(new BranchSummaryDto(CHAPTER_ID, "Test Chapter", "TestCity", "TestState"));
     }
 
     private static CreateFamilyRequest minimalRequest(String firstName, String lastName, String district) {
@@ -83,12 +100,17 @@ class FamilyServiceImplTest {
                 null, null, null, null, null);
     }
 
+    private static CreateFamilyRequest requestWithSamaj(Samaj samaj, String district) {
+        return new CreateFamilyRequest("Ramesh", null, "Agrawal", null, null, null, null, null, null,
+                null, null, null, district, null, null, samaj, null, null, null, null, null,
+                null, null, null, null, null);
+    }
+
     @Test
     void createFamily_generatesReadableFamilyCodeAndPersistsChapterScoped() {
         when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(branchClient.getBranch(CHAPTER_ID)).thenReturn(Optional.empty());
 
-        FamilyDto result = familyService.createFamily(CHAPTER_ID, OWNER_USER_ID, true,minimalRequest("Ramesh", "Agrawal", "Indore"));
+        FamilyDto result = familyService.createFamily(OWNER_USER_ID, true, minimalRequest("Ramesh", "Agrawal", "Indore"));
 
         assertThat(result.familyCode()).matches(FAMILY_CODE_PATTERN);
         ArgumentCaptor<Family> captor = ArgumentCaptor.forClass(Family.class);
@@ -98,15 +120,107 @@ class FamilyServiceImplTest {
     }
 
     @Test
+    void createFamily_resolvesChapterFromTheFamilysOwnAddress_notTheCallersAccountChapter() {
+        when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        familyService.createFamily(OWNER_USER_ID, true, requestWithSamaj(Samaj.AGRAWAL, "Indore"));
+
+        // "Indore" is the request's own district/state - this must be what's resolved, regardless
+        // of whatever chapter the caller's own account currently has (e.g. still "Unassigned"
+        // from sign-up - see UserServiceImpl#registerUser).
+        verify(branchClient).resolveOrCreateChapter(eq("Indore"), any());
+    }
+
+    @Test
+    void createFamily_syncsTheOwnersAccountChapter_toTheResolvedChapter() {
+        when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
+        UUID resolvedChapterId = UUID.randomUUID();
+        when(branchClient.resolveOrCreateChapter(any(), any()))
+                .thenReturn(new BranchSummaryDto(resolvedChapterId, "Pune Chapter", "Pune", "Maharashtra"));
+
+        FamilyDto result = familyService.createFamily(OWNER_USER_ID, true, minimalRequest("Ramesh", "Agrawal", "Pune"));
+
+        assertThat(result.chapterId()).isEqualTo(resolvedChapterId);
+        verify(userClient).updateOwnChapter(resolvedChapterId);
+    }
+
+    @Test
+    void createFamily_doesNotSyncAnyAccount_whenCallerHasNoResolvableUserId() {
+        // Tokens whose subject isn't a UUID (hand-issued local tokens) resolve to a null
+        // ownerUserId - there is no "caller's own account" to sync in that case.
+        when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        familyService.createFamily(null, false, minimalRequest("Ramesh", "Agrawal", "Indore"));
+
+        verify(userClient, never()).updateOwnChapter(any());
+    }
+
+    @Test
+    void createFamily_propagatesWhenChapterResolutionFails() {
+        // Unlike the account-chapter sync above, a failure here must NOT be swallowed - the
+        // family itself would otherwise be saved with a wrong/stale chapter (see
+        // BranchClient#resolveOrCreateChapter's javadoc).
+        when(branchClient.resolveOrCreateChapter(any(), any()))
+                .thenThrow(new RuntimeException("user-service unreachable"));
+
+        assertThatThrownBy(() -> familyService.createFamily(OWNER_USER_ID, true,
+                minimalRequest("Ramesh", "Agrawal", "Indore")))
+                .isInstanceOf(RuntimeException.class);
+        verify(familyRepository, never()).save(any());
+        verify(userClient, never()).updateOwnChapter(any());
+    }
+
+    @Test
+    void createFamily_buildsCodeFromSamajChapterCityAndSequence() {
+        when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(branchClient.resolveOrCreateChapter(any(), any()))
+                .thenReturn(new BranchSummaryDto(CHAPTER_ID, "Pune Chapter", "Pune", "Maharashtra"));
+        when(familyCodeSequenceRepository.nextSequence("AGR", "PUN")).thenReturn(1);
+
+        FamilyDto result = familyService.createFamily(OWNER_USER_ID, true,
+                requestWithSamaj(Samaj.AGRAWAL, "Indore"));
+
+        // SocietyCode from samaj (AGRAWAL -> AGR), CityCode from the resolved chapter's city
+        // (Pune -> PUN, not the family's own district "Indore") - see generateFamilyCode's
+        // comment for why the chapter city wins over the free-text address district.
+        assertThat(result.familyCode()).isEqualTo("AGR-PUN-000001");
+    }
+
+    @Test
+    void createFamily_padsSequenceNumberToSixDigits() {
+        when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(branchClient.resolveOrCreateChapter(any(), any()))
+                .thenReturn(new BranchSummaryDto(CHAPTER_ID, "Mumbai Chapter", "Mumbai", "Maharashtra"));
+        when(familyCodeSequenceRepository.nextSequence("AGR", "MUM")).thenReturn(42);
+
+        FamilyDto result = familyService.createFamily(OWNER_USER_ID, true,
+                requestWithSamaj(Samaj.AGRAWAL, "Indore"));
+
+        assertThat(result.familyCode()).isEqualTo("AGR-MUM-000042");
+    }
+
+    @Test
+    void createFamily_fallsBackToPlaceholderSocietySegment_whenSamajIsAbsent() {
+        when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(branchClient.resolveOrCreateChapter(any(), any()))
+                .thenReturn(new BranchSummaryDto(CHAPTER_ID, "Indore Chapter", "Indore", "Madhya Pradesh"));
+        when(familyCodeSequenceRepository.nextSequence("XXX", "IND")).thenReturn(1);
+
+        FamilyDto result = familyService.createFamily(OWNER_USER_ID, true,
+                requestWithSamaj(null, "Indore"));
+
+        assertThat(result.familyCode()).isEqualTo("XXX-IND-000001");
+    }
+
+    @Test
     void createFamily_computesHeadOfFamilyNameFromThreeParts() {
         when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(branchClient.getBranch(CHAPTER_ID)).thenReturn(Optional.empty());
 
         CreateFamilyRequest request = new CreateFamilyRequest("Ramesh", "Kumar", "Agrawal", null, null, null, null,
                 null, null, null, null, null, "Indore", null, null, null, null, null, null, null, null,
                 null, null, null, null, null);
 
-        FamilyDto result = familyService.createFamily(CHAPTER_ID, OWNER_USER_ID, true,request);
+        FamilyDto result = familyService.createFamily(OWNER_USER_ID, true, request);
 
         assertThat(result.headOfFamilyName()).isEqualTo("Ramesh Kumar Agrawal");
         assertThat(result.headFirstName()).isEqualTo("Ramesh");
@@ -117,9 +231,8 @@ class FamilyServiceImplTest {
     @Test
     void createFamily_omitsMiddleNameFromComputedHeadOfFamilyNameWhenBlank() {
         when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(branchClient.getBranch(CHAPTER_ID)).thenReturn(Optional.empty());
 
-        FamilyDto result = familyService.createFamily(CHAPTER_ID, OWNER_USER_ID, true,minimalRequest("Ramesh", "Agrawal", "Indore"));
+        FamilyDto result = familyService.createFamily(OWNER_USER_ID, true, minimalRequest("Ramesh", "Agrawal", "Indore"));
 
         assertThat(result.headOfFamilyName()).isEqualTo("Ramesh Agrawal");
     }
@@ -127,9 +240,8 @@ class FamilyServiceImplTest {
     @Test
     void createFamily_derivesCityFromDistrictRegardlessOfClientInput() {
         when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(branchClient.getBranch(CHAPTER_ID)).thenReturn(Optional.empty());
 
-        FamilyDto result = familyService.createFamily(CHAPTER_ID, OWNER_USER_ID, true,minimalRequest("Ramesh", "Agrawal", "Indore"));
+        FamilyDto result = familyService.createFamily(OWNER_USER_ID, true, minimalRequest("Ramesh", "Agrawal", "Indore"));
 
         // city isn't part of CreateFamilyRequest at all - the wizard spec requires it to be
         // auto-populated/read-only, mirroring whatever district was selected.
@@ -140,9 +252,8 @@ class FamilyServiceImplTest {
     @Test
     void createFamily_defaultsOwnershipBooleansToFalseWhenOmitted() {
         when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(branchClient.getBranch(CHAPTER_ID)).thenReturn(Optional.empty());
 
-        FamilyDto result = familyService.createFamily(CHAPTER_ID, OWNER_USER_ID, true,minimalRequest("Ramesh", "Agrawal", "Indore"));
+        FamilyDto result = familyService.createFamily(OWNER_USER_ID, true, minimalRequest("Ramesh", "Agrawal", "Indore"));
 
         assertThat(result.ownTwoWheeler()).isFalse();
         assertThat(result.ownFourWheeler()).isFalse();
@@ -158,7 +269,7 @@ class FamilyServiceImplTest {
                 "9876543210", null, null, null, null, null, "Indore", null, null, null, null, null, null, null,
                 null, null, null, null, null, null);
 
-        assertThatThrownBy(() -> familyService.createFamily(CHAPTER_ID, OWNER_USER_ID, true,request))
+        assertThatThrownBy(() -> familyService.createFamily(OWNER_USER_ID, true, request))
                 .isInstanceOf(IllegalArgumentException.class);
         verify(familyRepository, never()).save(any());
     }
@@ -167,7 +278,7 @@ class FamilyServiceImplTest {
     void createFamily_rejectsSecondFamilyForOwnerWithoutUnlimitedPermission() {
         when(familyRepository.countByOwnerUserId(OWNER_USER_ID)).thenReturn(1L);
 
-        assertThatThrownBy(() -> familyService.createFamily(CHAPTER_ID, OWNER_USER_ID, false,
+        assertThatThrownBy(() -> familyService.createFamily(OWNER_USER_ID, false,
                 minimalRequest("Ramesh", "Agrawal", "Indore")))
                 .isInstanceOf(FamilyRegistrationLimitException.class)
                 .hasMessageContaining("already registered a family");
@@ -179,7 +290,7 @@ class FamilyServiceImplTest {
         when(familyRepository.countByOwnerUserId(OWNER_USER_ID)).thenReturn(0L);
         when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        FamilyDto result = familyService.createFamily(CHAPTER_ID, OWNER_USER_ID, false,
+        FamilyDto result = familyService.createFamily(OWNER_USER_ID, false,
                 minimalRequest("Ramesh", "Agrawal", "Indore"));
 
         assertThat(result.headOfFamilyName()).isEqualTo("Ramesh Agrawal");
@@ -189,7 +300,7 @@ class FamilyServiceImplTest {
     void createFamily_ignoresCapForCallersHoldingUnlimitedPermission() {
         when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        FamilyDto result = familyService.createFamily(CHAPTER_ID, OWNER_USER_ID, true,
+        FamilyDto result = familyService.createFamily(OWNER_USER_ID, true,
                 minimalRequest("Ramesh", "Agrawal", "Indore"));
 
         assertThat(result).isNotNull();
@@ -202,8 +313,7 @@ class FamilyServiceImplTest {
     void createFamily_recordsTheOwnerOnTheSavedRow() {
         when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        familyService.createFamily(CHAPTER_ID, OWNER_USER_ID, false,
-                minimalRequest("Ramesh", "Agrawal", "Indore"));
+        familyService.createFamily(OWNER_USER_ID, false, minimalRequest("Ramesh", "Agrawal", "Indore"));
 
         org.mockito.ArgumentCaptor<Family> saved = org.mockito.ArgumentCaptor.forClass(Family.class);
         verify(familyRepository).save(saved.capture());
@@ -216,34 +326,25 @@ class FamilyServiceImplTest {
         // The row is still created - just unowned - rather than blocking a legitimate caller.
         when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        FamilyDto result = familyService.createFamily(CHAPTER_ID, null, false,
-                minimalRequest("Ramesh", "Agrawal", "Indore"));
+        FamilyDto result = familyService.createFamily(null, false, minimalRequest("Ramesh", "Agrawal", "Indore"));
 
         assertThat(result).isNotNull();
         verify(familyRepository, never()).countByOwnerUserId(any());
     }
 
     @Test
-    void createFamily_degradesGracefullyWhenBranchLookupFails() {
-        when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(branchClient.getBranch(CHAPTER_ID)).thenReturn(Optional.empty());
-
-        FamilyDto result = familyService.createFamily(CHAPTER_ID, OWNER_USER_ID, true,minimalRequest("Ramesh", "Agrawal", null));
-
-        // A user-service outage must never fail family creation - branch is display enrichment only.
-        assertThat(result.branch()).isNull();
-        assertThat(result.headOfFamilyName()).isEqualTo("Ramesh Agrawal");
-    }
-
-    @Test
-    void createFamily_attachesResolvedBranchWhenAvailable() {
+    void createFamily_attachesResolvedBranchOnTheResponse() {
         when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
         BranchSummaryDto branch = new BranchSummaryDto(CHAPTER_ID, "Indore Chapter", "Indore", "Madhya Pradesh");
-        when(branchClient.getBranch(CHAPTER_ID)).thenReturn(Optional.of(branch));
+        when(branchClient.resolveOrCreateChapter(any(), any())).thenReturn(branch);
 
-        FamilyDto result = familyService.createFamily(CHAPTER_ID, OWNER_USER_ID, true,minimalRequest("Ramesh", "Agrawal", null));
+        FamilyDto result = familyService.createFamily(OWNER_USER_ID, true, minimalRequest("Ramesh", "Agrawal", "Indore"));
 
         assertThat(result.branch()).isEqualTo(branch);
+        // getBranch is still used by getFamily/listFamilies for read-time enrichment, but
+        // createFamily itself no longer calls it at all - the resolveOrCreateChapter result IS
+        // the branch info now, with zero extra round trips.
+        verify(branchClient, never()).getBranch(any());
     }
 
     @Test
@@ -282,6 +383,131 @@ class FamilyServiceImplTest {
 
         assertThat(result.id()).isEqualTo(familyId);
         assertThat(result.branch()).isEqualTo(branch);
+    }
+
+    private static UpdateFamilyRequest updateRequest(String firstName, String lastName, String mobileNumber,
+                                                       String country, String state, String district) {
+        return new UpdateFamilyRequest(firstName, "", lastName, mobileNumber, "updated@example.com",
+                country, state, district);
+    }
+
+    @Test
+    void updateFamily_updatesHeadNameMobileEmail_andRecomputesHeadOfFamilyName() {
+        UUID familyId = UUID.randomUUID();
+        Family family = Family.builder().chapterId(CHAPTER_ID).headFirstName("Ramesh").headLastName("Agrawal")
+                .headOfFamilyName("Ramesh Agrawal").mobileNumber("9876543210").country("India")
+                .state("Madhya Pradesh").district("Indore").build();
+        family.setId(familyId);
+        when(familyRepository.findById(familyId)).thenReturn(Optional.of(family));
+        when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        FamilyDto result = familyService.updateFamily(chapterScope(CHAPTER_ID), familyId,
+                updateRequest("Suresh", "Sharma", "9876543210", "India", "Madhya Pradesh", "Indore"));
+
+        assertThat(result.headFirstName()).isEqualTo("Suresh");
+        assertThat(result.headLastName()).isEqualTo("Sharma");
+        assertThat(result.headOfFamilyName()).isEqualTo("Suresh Sharma");
+        assertThat(result.email()).isEqualTo("updated@example.com");
+    }
+
+    @Test
+    void updateFamily_neverChangesTheFamilyCode() {
+        UUID familyId = UUID.randomUUID();
+        Family family = Family.builder().chapterId(CHAPTER_ID).headFirstName("Ramesh").headLastName("Agrawal")
+                .headOfFamilyName("Ramesh Agrawal").familyCode("AGR-IND-000001").mobileNumber("9876543210")
+                .country("India").state("Madhya Pradesh").district("Indore").build();
+        family.setId(familyId);
+        when(familyRepository.findById(familyId)).thenReturn(Optional.of(family));
+        when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        FamilyDto result = familyService.updateFamily(chapterScope(CHAPTER_ID), familyId,
+                updateRequest("Suresh", "Sharma", "9876543210", "India", "Madhya Pradesh", "Indore"));
+
+        assertThat(result.familyCode()).isEqualTo("AGR-IND-000001");
+    }
+
+    @Test
+    void updateFamily_rejectsMobileNumberAlreadyUsedByAnotherFamily() {
+        UUID familyId = UUID.randomUUID();
+        Family family = Family.builder().chapterId(CHAPTER_ID).headFirstName("Ramesh").headLastName("Agrawal")
+                .headOfFamilyName("Ramesh Agrawal").mobileNumber("9876543210").country("India")
+                .state("Madhya Pradesh").district("Indore").build();
+        family.setId(familyId);
+        when(familyRepository.findById(familyId)).thenReturn(Optional.of(family));
+        when(familyRepository.existsByMobileNumber("9999999999")).thenReturn(true);
+
+        assertThatThrownBy(() -> familyService.updateFamily(chapterScope(CHAPTER_ID), familyId,
+                updateRequest("Ramesh", "Agrawal", "9999999999", "India", "Madhya Pradesh", "Indore")))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(familyRepository, never()).save(any());
+    }
+
+    @Test
+    void updateFamily_allowsKeepingTheSameMobileNumberUnchanged() {
+        UUID familyId = UUID.randomUUID();
+        Family family = Family.builder().chapterId(CHAPTER_ID).headFirstName("Ramesh").headLastName("Agrawal")
+                .headOfFamilyName("Ramesh Agrawal").mobileNumber("9876543210").country("India")
+                .state("Madhya Pradesh").district("Indore").build();
+        family.setId(familyId);
+        when(familyRepository.findById(familyId)).thenReturn(Optional.of(family));
+        when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        familyService.updateFamily(chapterScope(CHAPTER_ID), familyId,
+                updateRequest("Ramesh", "Agrawal", "9876543210", "India", "Madhya Pradesh", "Indore"));
+
+        // Never even asked - the number didn't change, so there's nothing to check for a clash.
+        verify(familyRepository, never()).existsByMobileNumber(any());
+    }
+
+    @Test
+    void updateFamily_reResolvesChapterWhenDistrictOrStateChanges() {
+        UUID familyId = UUID.randomUUID();
+        UUID newChapterId = UUID.randomUUID();
+        Family family = Family.builder().chapterId(CHAPTER_ID).headFirstName("Ramesh").headLastName("Agrawal")
+                .headOfFamilyName("Ramesh Agrawal").mobileNumber("9876543210").country("India")
+                .state("Madhya Pradesh").district("Indore").build();
+        family.setId(familyId);
+        when(familyRepository.findById(familyId)).thenReturn(Optional.of(family));
+        when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
+        BranchSummaryDto newChapter = new BranchSummaryDto(newChapterId, "Pune Chapter", "Pune", "Maharashtra");
+        when(branchClient.resolveOrCreateChapter("Pune", "Maharashtra")).thenReturn(newChapter);
+
+        FamilyDto result = familyService.updateFamily(chapterScope(CHAPTER_ID), familyId,
+                updateRequest("Ramesh", "Agrawal", "9876543210", "India", "Maharashtra", "Pune"));
+
+        verify(branchClient).resolveOrCreateChapter("Pune", "Maharashtra");
+        assertThat(result.chapterId()).isEqualTo(newChapterId);
+        assertThat(result.city()).isEqualTo("Pune");
+    }
+
+    @Test
+    void updateFamily_doesNotCallChapterResolution_whenLocationUnchanged() {
+        UUID familyId = UUID.randomUUID();
+        Family family = Family.builder().chapterId(CHAPTER_ID).headFirstName("Ramesh").headLastName("Agrawal")
+                .headOfFamilyName("Ramesh Agrawal").mobileNumber("9876543210").country("India")
+                .state("Madhya Pradesh").district("Indore").build();
+        family.setId(familyId);
+        when(familyRepository.findById(familyId)).thenReturn(Optional.of(family));
+        when(familyRepository.save(any(Family.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        familyService.updateFamily(chapterScope(CHAPTER_ID), familyId,
+                updateRequest("Ramesh", "Agrawal", "9876543210", "India", "Madhya Pradesh", "Indore"));
+
+        verify(branchClient, never()).resolveOrCreateChapter(any(), any());
+    }
+
+    @Test
+    void updateFamily_throwsNotFound_forFamilyOutOfCallersScope() {
+        UUID otherChapterId = UUID.randomUUID();
+        UUID familyId = UUID.randomUUID();
+        Family family = Family.builder().chapterId(otherChapterId).headOfFamilyName("Someone Else")
+                .mobileNumber("9876543210").country("India").state("Madhya Pradesh").district("Indore").build();
+        family.setId(familyId);
+        when(familyRepository.findById(familyId)).thenReturn(Optional.of(family));
+
+        assertThatThrownBy(() -> familyService.updateFamily(chapterScope(CHAPTER_ID), familyId,
+                updateRequest("Ramesh", "Agrawal", "9876543210", "India", "Madhya Pradesh", "Indore")))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test

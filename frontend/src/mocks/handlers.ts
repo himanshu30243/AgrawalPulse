@@ -15,6 +15,7 @@ import type {
   MembershipTransaction,
   RecordTransactionRequest,
   RegisterEventRequest,
+  UpdateFamilyRequest,
   UpdateTransactionRequest,
 } from '@/types/domain';
 
@@ -180,6 +181,25 @@ let nextEventId = mockEvents.length + 1;
 let nextRegistrationId = 1;
 const events: EventItem[] = [...mockEvents];
 const eventRegistrations: EventRegistration[] = [];
+
+// Mirrors FamilyServiceImpl#generateFamilyCode's [SocietyCode]-[CityCode]-[Sequence] format
+// (e.g. "AGR-PUN-000001") - SocietyCode from samaj, CityCode from the selected chapter's city,
+// sequence reset per (societyCode, cityCode) pair and padded to 6 digits.
+const familyCodeSequences = new Map<string, number>();
+
+function deriveFamilyCodeSegment(source: string | null | undefined): string {
+  const lettersOnly = (source ?? '').replace(/[^A-Za-z]/g, '').toUpperCase();
+  return lettersOnly.length >= 3 ? lettersOnly.slice(0, 3) : lettersOnly.padEnd(3, 'X');
+}
+
+function generateFamilyCode(samaj: string | null | undefined, city: string | null | undefined): string {
+  const societyCode = deriveFamilyCodeSegment(samaj);
+  const cityCode = deriveFamilyCodeSegment(city);
+  const key = `${societyCode}-${cityCode}`;
+  const sequence = (familyCodeSequences.get(key) ?? 0) + 1;
+  familyCodeSequences.set(key, sequence);
+  return `${societyCode}-${cityCode}-${String(sequence).padStart(6, '0')}`;
+}
 
 function computeAge(dateOfBirth: string): number {
   const dob = new Date(dateOfBirth);
@@ -523,6 +543,31 @@ export const handlers = [
     return HttpResponse.json(family, { status: 200 });
   }),
 
+  // Mirrors FamilyServiceImpl#updateFamily - head name/contact/location only, familyCode
+  // untouched. Chapter re-resolution on a district/state change isn't modeled here (the mock has
+  // no chapter-resolution endpoint to call) - city/state/country just update in place, which is
+  // enough to exercise the frontend's own behavior.
+  http.put('/api/v1/families/:familyId', async ({ params, request }) => {
+    const family = families.find((f) => f.id === params.familyId);
+    if (!family) return HttpResponse.json({ message: 'Family not found' }, { status: 404 });
+    const body = (await request.json()) as UpdateFamilyRequest;
+
+    family.headFirstName = body.headFirstName;
+    family.headMiddleName = body.headMiddleName || null;
+    family.headLastName = body.headLastName;
+    family.headOfFamilyName = [body.headFirstName, body.headMiddleName, body.headLastName]
+      .filter(Boolean)
+      .join(' ');
+    family.mobileNumber = body.mobileNumber;
+    family.email = body.email;
+    family.country = body.country;
+    family.state = body.state;
+    family.district = body.district;
+    family.city = body.district;
+
+    return HttpResponse.json(family, { status: 200 });
+  }),
+
   http.post('/api/v1/families', async ({ request }) => {
     const body = (await request.json()) as CreateFamilyRequest;
     const id = `family-${nextFamilyId++}`;
@@ -533,7 +578,7 @@ export const handlers = [
 
     const newFamily: Family = {
       id,
-      familyCode: `FAM-${id.toUpperCase()}`,
+      familyCode: generateFamilyCode(body.samaj, branch?.city),
       chapterId: branch?.id ?? '',
       branch,
       headFirstName: body.headFirstName,
@@ -572,6 +617,20 @@ export const handlers = [
     families.push(newFamily);
     familyMembers[id] = [];
     return HttpResponse.json(newFamily, { status: 201 });
+  }),
+
+  // Stands in for family-service's India-Post-backed PIN lookup (PincodeLookupController) - a
+  // small fixed map covering a few real Indore-area PINs (mockBranches' cities) is enough to
+  // exercise AddressStep's auto-fill UX in dev:mock/tests without a live network call.
+  http.get('/api/v1/families/pincode/:pincode', ({ params }) => {
+    const pincode = params.pincode as string;
+    const known: Record<string, { district: string; state: string; country: string }> = {
+      '452001': { district: 'Indore', state: 'Madhya Pradesh', country: 'India' },
+      '462001': { district: 'Bhopal', state: 'Madhya Pradesh', country: 'India' },
+    };
+    const match = known[pincode];
+    if (!match) return HttpResponse.json({ message: `No location found for PIN code ${pincode}` }, { status: 404 });
+    return HttpResponse.json(match, { status: 200 });
   }),
 
   // Family Members

@@ -4,6 +4,9 @@ import type { Gender } from '@/types/domain';
 // Backs POST /api/v1/users/register (user-service's UserController.selfRegister - permitAll,
 // see SecurityConfig, since a brand-new account has no JWT yet). No role field: the server always
 // assigns USER (see RegisterUserRequest's comment) - a registrant cannot elect their own role.
+// No city/state here - the account starts on a placeholder chapter and gets its real one when
+// the person registers their family (see FamilyServiceImpl#createFamily), where an address is
+// actually collected.
 export interface SelfRegisterRequest {
   firstName: string;
   middleName?: string;

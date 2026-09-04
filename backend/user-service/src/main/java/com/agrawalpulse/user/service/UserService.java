@@ -30,4 +30,10 @@ public interface UserService {
     List<UserDto> listUsersForChapter(UUID chapterId);
 
     UserDto updateRole(UUID chapterId, UUID userId, UpdateUserRoleRequest request);
+
+    // Self-only by construction - callers never pass a userId here, it always comes from the
+    // caller's own JWT (see UserController's PUT /me/chapter). Backs family-service's
+    // createFamily -> UserClient#updateOwnChapter sync, so a family owner's account ends up
+    // scoped to the same chapter as the family they just registered.
+    void updateOwnChapter(UUID userId, UUID chapterId);
 }

@@ -45,6 +45,45 @@ describe('FamiliesListPage', () => {
     }
   });
 
+  it('shows the Edit button for a role holding EDIT_FAMILY, and opens the edit dialog for that family', async () => {
+    renderWithProviders(<FamiliesListPage />, { authUser: { roles: ['ADMIN'] } });
+    const user = userEvent.setup();
+    const family = mockFamilies[0];
+    if (!family) throw new Error('fixture data missing');
+
+    await waitFor(() => expect(screen.getByText(family.familyCode)).toBeInTheDocument());
+
+    const editButtons = screen.getAllByRole('button', { name: /^edit$/i });
+    await user.click(editButtons[0] as HTMLElement);
+
+    expect(await screen.findByText(/edit family/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('First Name')).toHaveValue(family.headFirstName);
+  });
+
+  it('hides the Edit button for a read-only role without EDIT_FAMILY', async () => {
+    // Mirrors the "never offers registration to a role without the create permission" test above -
+    // an auditor-like role that can view everything but edit nothing.
+    const { server } = await import('@/mocks/server');
+    const { http, HttpResponse } = await import('msw');
+    server.use(
+      http.get('*/api/v1/me', () =>
+        HttpResponse.json({
+          userId: 'read-only-user',
+          email: 'auditor@example.com',
+          chapterId: 'branch-indore',
+          role: { roleId: 'role-auditor', roleCode: 'AUDITOR', roleName: 'Auditor' },
+          menus: [],
+          permissions: ['VIEW_FAMILY', 'VIEW_ALL_FAMILIES'],
+        }),
+      ),
+    );
+
+    renderWithProviders(<FamiliesListPage />, { authUser: { roles: ['AUDITOR'] } });
+
+    await waitFor(() => expect(screen.getByText('Ramesh Agrawal')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument();
+  });
+
   it('shows an empty state when there are no families', async () => {
     // Overrides the default mock handler for just this test to exercise the empty-list path,
     // which the "happy path" tests above never touch.
@@ -85,6 +124,96 @@ describe('FamiliesListPage', () => {
 
     await waitFor(() => expect(screen.queryByText('Ramesh Agrawal')).not.toBeInTheDocument());
     expect(screen.getByText('Manoj Goyal')).toBeInTheDocument();
+  });
+
+  describe('pagination', () => {
+    // The default fixtures only have 2 families - too few to exercise pagination (default page
+    // size is 10) - so these tests override the list endpoint with 25 generated families.
+    const buildFamilies = (count: number) =>
+      Array.from({ length: count }, (_, i) => {
+        const base = mockFamilies[0];
+        if (!base) throw new Error('fixture data missing');
+        return {
+          ...base,
+          id: `family-page-${i + 1}`,
+          familyCode: `FAM-PAGE${String(i + 1).padStart(4, '0')}`,
+          headOfFamilyName: `Test Head ${i + 1}`,
+        };
+      });
+
+    const mockManyFamilies = async (count: number) => {
+      const { server } = await import('@/mocks/server');
+      const { http, HttpResponse } = await import('msw');
+      const many = buildFamilies(count);
+      server.use(http.get('*/api/v1/families', () => HttpResponse.json(many)));
+      return many;
+    };
+
+    it('shows only the first page (10 rows) by default, with sequence numbers starting at 1', async () => {
+      const many = await mockManyFamilies(25);
+      renderWithProviders(<FamiliesListPage />, { authUser: { roles: ['ADMIN'] } });
+
+      await waitFor(() => expect(screen.getByText(many[0]!.headOfFamilyName)).toBeInTheDocument());
+
+      // Rows 1-10 present, rows 11+ not yet rendered.
+      expect(screen.getByText(many[9]!.headOfFamilyName)).toBeInTheDocument();
+      expect(screen.queryByText(many[10]!.headOfFamilyName)).not.toBeInTheDocument();
+
+      const rows = screen.getAllByRole('row');
+      // First body row (index 1, since index 0 is the header row) should show sequence number 1.
+      expect(within(rows[1] as HTMLElement).getByText('1')).toBeInTheDocument();
+      expect(within(rows[10] as HTMLElement).getByText('10')).toBeInTheDocument();
+    });
+
+    it('advances to the next page and shows the correct sequence numbers', async () => {
+      const many = await mockManyFamilies(25);
+      renderWithProviders(<FamiliesListPage />, { authUser: { roles: ['ADMIN'] } });
+
+      await waitFor(() => expect(screen.getByText(many[0]!.headOfFamilyName)).toBeInTheDocument());
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: /next page/i }));
+
+      await waitFor(() => expect(screen.getByText(many[10]!.headOfFamilyName)).toBeInTheDocument());
+      expect(screen.queryByText(many[0]!.headOfFamilyName)).not.toBeInTheDocument();
+
+      const rows = screen.getAllByRole('row');
+      // Second page starts at sequence number 11.
+      expect(within(rows[1] as HTMLElement).getByText('11')).toBeInTheDocument();
+    });
+
+    it('resets to the first page when a filter narrows the results', async () => {
+      const many = await mockManyFamilies(25);
+      renderWithProviders(<FamiliesListPage />, { authUser: { roles: ['ADMIN'] } });
+
+      await waitFor(() => expect(screen.getByText(many[0]!.headOfFamilyName)).toBeInTheDocument());
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: /next page/i }));
+      await waitFor(() => expect(screen.getByText(many[10]!.headOfFamilyName)).toBeInTheDocument());
+
+      // Narrow to a single match, which no longer fills a second page.
+      await user.type(screen.getByLabelText(/^search/i), many[0]!.familyCode);
+
+      await waitFor(() => expect(screen.getByText(many[0]!.headOfFamilyName)).toBeInTheDocument());
+      expect(screen.queryByText(many[10]!.headOfFamilyName)).not.toBeInTheDocument();
+    });
+
+    it('shows more rows per page when the page size is changed', async () => {
+      const many = await mockManyFamilies(25);
+      renderWithProviders(<FamiliesListPage />, { authUser: { roles: ['ADMIN'] } });
+
+      await waitFor(() => expect(screen.getByText(many[0]!.headOfFamilyName)).toBeInTheDocument());
+      expect(screen.queryByText(many[10]!.headOfFamilyName)).not.toBeInTheDocument();
+
+      const user = userEvent.setup();
+      const rowsPerPageSelect = screen.getByRole('combobox', { name: /rows per page/i });
+      await user.click(rowsPerPageSelect);
+      await user.click(await screen.findByRole('option', { name: '25' }));
+
+      // All 25 rows should now be visible on a single page.
+      await waitFor(() => expect(screen.getByText(many[24]!.headOfFamilyName)).toBeInTheDocument());
+    });
   });
 
   describe('role-based access to registration', () => {

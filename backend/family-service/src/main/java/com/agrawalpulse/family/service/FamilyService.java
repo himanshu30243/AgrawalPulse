@@ -5,6 +5,7 @@ import com.agrawalpulse.family.dto.CreateFamilyMemberRequest;
 import com.agrawalpulse.family.dto.CreateFamilyRequest;
 import com.agrawalpulse.family.dto.FamilyDto;
 import com.agrawalpulse.family.dto.FamilyMemberDto;
+import com.agrawalpulse.family.dto.UpdateFamilyRequest;
 import com.agrawalpulse.family.storage.FamilyPhotoData;
 
 import java.util.List;
@@ -16,18 +17,23 @@ import java.util.UUID;
 public interface FamilyService {
 
     /**
-     * Registers a family owned by {@code ownerUserId}.
+     * Registers a family owned by {@code ownerUserId}. No chapterId parameter - the chapter is
+     * resolved (or created) from the request's own address (district/state), the same
+     * resolve-or-create call {@code updateFamily} makes on an address change, and then synced
+     * onto the owner's own account too. This is deliberate: an account may still be sitting on
+     * the "Unassigned" placeholder chapter from sign-up (see UserServiceImpl#registerUser) - this
+     * is the first point a real address exists to resolve a real chapter from.
      *
      * @param ownerUserId        the registering user; recorded on the row and counted against the
      *                           per-user cap. May be null only for callers whose token carries no
-     *                           usable subject, in which case no cap can be applied.
+     *                           usable subject, in which case no cap can be applied (and the
+     *                           owner's own account chapter cannot be synced either).
      * @param mayCreateMultiple  whether the caller holds CREATE_FAMILY_UNLIMITED. Passed in rather
      *                           than looked up so this service stays free of security plumbing and
      *                           the rule is trivially testable in both directions.
      * @throws FamilyRegistrationLimitException if the cap would be exceeded.
      */
-    FamilyDto createFamily(UUID chapterId, UUID ownerUserId, boolean mayCreateMultiple,
-                           CreateFamilyRequest request);
+    FamilyDto createFamily(UUID ownerUserId, boolean mayCreateMultiple, CreateFamilyRequest request);
 
     // scope's chapterId/userId are always the caller's own (from their JWT), regardless of which
     // service is calling - membership-service/event-service/matrimony-service forward the
@@ -36,6 +42,12 @@ public interface FamilyService {
     // when the id doesn't exist and when it's out of the caller's scope - callers must not be able
     // to distinguish the two.
     FamilyDto getFamily(FamilyAccessScope scope, UUID familyId);
+
+    // Head name/contact/location only - see UpdateFamilyRequest for exactly what's editable and
+    // why. Changing country/state/district re-resolves (or creates) the matching chapter via
+    // BranchClient#resolveOrCreateChapter, same mechanism self-registration uses - a family moving
+    // address can move chapter-tier scope with it.
+    FamilyDto updateFamily(FamilyAccessScope scope, UUID familyId, UpdateFamilyRequest request);
 
     // The three filters are optional/ANDed (null or blank = don't filter on that field), applied
     // in-memory after scope resolution rather than as a new repository query - see

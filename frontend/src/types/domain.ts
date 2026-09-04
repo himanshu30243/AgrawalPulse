@@ -187,6 +187,20 @@ export interface Family {
   createdAt: string;
 }
 
+// Editable-after-registration subset of CreateFamilyRequest - mirrors family-service's
+// UpdateFamilyRequest exactly. Changing country/state/district re-resolves (or creates) the
+// family's chapter server-side; everything else on a family has no edit path yet.
+export interface UpdateFamilyRequest {
+  headFirstName: string;
+  headMiddleName: string;
+  headLastName: string;
+  mobileNumber: string;
+  email: string;
+  country: string;
+  state: string;
+  district: string;
+}
+
 // Field set and required-ness mirror frontend/docs/family-registration.md's wizard steps 1-4.
 // city is deliberately absent - it's server-derived from district (auto-populated, read-only per
 // the spec's "Region / City" field), so there's nothing for the client to send for it.
@@ -217,6 +231,15 @@ export interface CreateFamilyRequest {
   ownHome: boolean;
   ownPlot: boolean;
   willingToContribute: boolean | null;
+}
+
+// GET /families/pincode/{pincode} (family-service) and GET /users/pincode/{pincode}
+// (user-service) both return this same shape - see familiesApi.lookupPincode and
+// registrationApi.lookupPincode.
+export interface PincodeLookupResult {
+  district: string;
+  state: string;
+  country: string;
 }
 
 // Financial-year (India, Apr-Mar) based, mirroring backend/membership-service's MembershipStatus:

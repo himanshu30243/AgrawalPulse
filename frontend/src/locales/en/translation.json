@@ -40,7 +40,9 @@
     "notSpecified": "Not specified",
     "errorGeneric": "Something went wrong. Please try again.",
     "noData": "No data available yet.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "rowsPerPage": "Rows per page:",
+    "paginationDisplayedRows": "{{from}}–{{to}} of {{count}}"
   },
   "auth": {
     "loginTitle": "Log in to AgrawalPulse",
@@ -83,6 +85,7 @@
     "noMatches": "No families match your search or filters.",
     "registrationLimitReached": "You have already registered a family. Please contact your administrator if changes are required.",
     "registrationNotPermitted": "Your role does not allow registering a family.",
+    "sequenceNo": "Sequence No.",
     "headOfFamily": "Head of Family",
     "headFirstName": "First Name",
     "headMiddleName": "Middle Name",
@@ -162,6 +165,11 @@
     "registerTitle": "Register a New Family",
     "registerSuccess": "Family registered successfully.",
     "registerError": "Could not register the family. Please check the form and try again.",
+    "editFamily": "Edit Family",
+    "updateFamilyError": "Could not update the family. Please check the form and try again.",
+    "pincodeLookupLoading": "Looking up…",
+    "pincodeLookupSuccess": "State and City filled in automatically - edit them if needed",
+    "pincodeLookupError": "Could not look up this PIN code - please enter State/City below",
     "familyCode": "Family Code",
     "genderMale": "Male",
     "genderFemale": "Female",

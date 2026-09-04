@@ -15,4 +15,12 @@ public interface ChapterService {
     ChapterDto getChapter(UUID chapterId);
 
     List<ChapterDto> listChapters();
+
+    List<ChapterDto> listUnstaffedChapters();
+
+    // Backs both self-registration (UserServiceImpl#registerUser, called locally) and
+    // family-service's edit-family flow (called remotely via BranchClient, over REST - see
+    // ChapterController's /resolve endpoint) - same resolve-or-create-by-city/state operation
+    // either way, see ChapterResolutionRepository.
+    ChapterDto resolveOrCreateChapter(String city, String state);
 }

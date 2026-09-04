@@ -909,6 +909,13 @@ function RegistrationCard() {
         Please fill in the information below to create your account
       </Typography>
 
+      {/* One Family, One Registration - this is an account signup, not a family member roster,
+          so the instruction belongs here rather than on the family registration wizard itself. */}
+      <Alert severity="info" sx={{ mb: 3 }}>
+        Please register only as the Head of Family. Do not create separate registrations for
+        individual family members. Additional members can be added after login.
+      </Alert>
+
       {/* Form */}
       <RegistrationForm />
     </Paper>

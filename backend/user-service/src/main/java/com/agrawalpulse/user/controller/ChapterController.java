@@ -2,6 +2,7 @@ package com.agrawalpulse.user.controller;
 
 import com.agrawalpulse.user.dto.ChapterDto;
 import com.agrawalpulse.user.dto.CreateChapterRequest;
+import com.agrawalpulse.user.dto.ResolveChapterRequest;
 import com.agrawalpulse.user.service.ChapterService;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -38,6 +39,29 @@ public class ChapterController {
     @GetMapping("/{chapterId}")
     public ChapterDto getChapter(@PathVariable UUID chapterId) {
         return chapterService.getChapter(chapterId);
+    }
+
+    // A literal path segment ("unstaffed") alongside "/{chapterId}" on the same base path - same
+    // proven-safe pattern as FamilyController's "/census-candidates" next to its "/{familyId}"
+    // (Spring resolves the literal segment as more specific, so this never gets mistaken for a
+    // chapterId value). Gated like create/update - only someone who can manage branches needs to
+    // know which ones still need a CHAPTER_ADMIN appointed.
+    @GetMapping("/unstaffed")
+    @PreAuthorize("hasAuthority('PERM_MANAGE_BRANCHES')")
+    public List<ChapterDto> listUnstaffedChapters() {
+        return chapterService.listUnstaffedChapters();
+    }
+
+    // Not gated by PERM_MANAGE_BRANCHES like create/update above - this is an idempotent
+    // resolve-or-create, not an authored admin action, and its actual callers are ordinary family
+    // editors: self-registration (in-process, see UserServiceImpl) and family-service's
+    // edit-family flow (over REST, forwarding the editor's own JWT - see family-service's
+    // BranchClient#resolveOrCreateChapter). EDIT_FAMILY is the permission either caller already
+    // needs to be doing this in the first place.
+    @PostMapping("/resolve")
+    @PreAuthorize("hasAuthority('PERM_EDIT_FAMILY')")
+    public ChapterDto resolveChapter(@Valid @RequestBody ResolveChapterRequest request) {
+        return chapterService.resolveOrCreateChapter(request.city(), request.state());
     }
 
     // Permission-gated rather than pinned to NATIONAL_ADMIN, so branch administration can be

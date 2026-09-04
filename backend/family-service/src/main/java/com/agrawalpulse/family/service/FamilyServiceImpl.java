@@ -3,14 +3,18 @@ package com.agrawalpulse.family.service;
 import com.agrawalpulse.common.exception.ResourceNotFoundException;
 import com.agrawalpulse.common.model.MaritalStatus;
 import com.agrawalpulse.family.client.BranchClient;
+import com.agrawalpulse.family.client.UserClient;
 import com.agrawalpulse.family.dto.BranchSummaryDto;
 import com.agrawalpulse.family.dto.CensusCandidateDto;
 import com.agrawalpulse.family.dto.CreateFamilyMemberRequest;
 import com.agrawalpulse.family.dto.CreateFamilyRequest;
 import com.agrawalpulse.family.dto.FamilyDto;
 import com.agrawalpulse.family.dto.FamilyMemberDto;
+import com.agrawalpulse.family.dto.UpdateFamilyRequest;
 import com.agrawalpulse.family.entity.Family;
 import com.agrawalpulse.family.entity.FamilyMember;
+import com.agrawalpulse.family.entity.Samaj;
+import com.agrawalpulse.family.repository.FamilyCodeSequenceRepository;
 import com.agrawalpulse.family.repository.FamilyMemberRepository;
 import com.agrawalpulse.family.repository.FamilyRepository;
 import com.agrawalpulse.family.storage.FamilyPhotoData;
@@ -18,7 +22,6 @@ import com.agrawalpulse.family.storage.FamilyPhotoStorage;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.HashMap;
@@ -31,30 +34,36 @@ import java.util.UUID;
 @Transactional
 class FamilyServiceImpl implements FamilyService {
 
-    private static final String FAMILY_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    private static final int FAMILY_CODE_LENGTH = 8;
-    private static final SecureRandom FAMILY_CODE_RANDOM = new SecureRandom();
     private static final Set<String> ALLOWED_PHOTO_CONTENT_TYPES = Set.of("image/jpeg", "image/png");
     private static final long MAX_PHOTO_SIZE_BYTES = 2L * 1024 * 1024;
     // Families a user may own without the CREATE_FAMILY_UNLIMITED permission.
     static final long MAX_FAMILIES_PER_OWNER = 1;
+    // Fallback code segment used when the source value (samaj, or the chapter's city) is missing
+    // or has no letters to draw from - keeps the code well-formed rather than throwing at creation
+    // time, e.g. if BranchClient can't reach user-service (same degrade-gracefully approach used
+    // for state-tier resolution elsewhere in this class).
+    private static final String UNKNOWN_CODE_SEGMENT = "XXX";
 
     private final FamilyRepository familyRepository;
     private final FamilyMemberRepository familyMemberRepository;
     private final BranchClient branchClient;
+    private final UserClient userClient;
     private final FamilyPhotoStorage familyPhotoStorage;
+    private final FamilyCodeSequenceRepository familyCodeSequenceRepository;
 
     FamilyServiceImpl(FamilyRepository familyRepository, FamilyMemberRepository familyMemberRepository,
-                       BranchClient branchClient, FamilyPhotoStorage familyPhotoStorage) {
+                       BranchClient branchClient, UserClient userClient, FamilyPhotoStorage familyPhotoStorage,
+                       FamilyCodeSequenceRepository familyCodeSequenceRepository) {
         this.familyRepository = familyRepository;
         this.familyMemberRepository = familyMemberRepository;
         this.branchClient = branchClient;
+        this.userClient = userClient;
         this.familyPhotoStorage = familyPhotoStorage;
+        this.familyCodeSequenceRepository = familyCodeSequenceRepository;
     }
 
     @Override
-    public FamilyDto createFamily(UUID chapterId, UUID ownerUserId, boolean mayCreateMultiple,
-                                  CreateFamilyRequest request) {
+    public FamilyDto createFamily(UUID ownerUserId, boolean mayCreateMultiple, CreateFamilyRequest request) {
         if (request.mobileNumber() != null && familyRepository.existsByMobileNumber(request.mobileNumber())) {
             throw new IllegalArgumentException("A family is already registered with mobile number " + request.mobileNumber());
         }
@@ -66,10 +75,17 @@ class FamilyServiceImpl implements FamilyService {
             throw new FamilyRegistrationLimitException(
                     "You have already registered a family. Multiple family registrations are not permitted.");
         }
+        // The family's chapter is resolved from its own address, not inherited from whatever
+        // chapter the caller's account currently has - the account may still be on the
+        // "Unassigned" placeholder from sign-up (see UserServiceImpl#registerUser), and this is
+        // the first point an address actually exists to resolve a real chapter from. Deliberately
+        // NOT caught here (unlike the account-sync call below) - if this fails, the family would
+        // otherwise be saved with a wrong/stale chapter, which is worse than failing the request.
+        BranchSummaryDto branch = branchClient.resolveOrCreateChapter(request.district(), request.state());
         Family family = Family.builder()
-                .chapterId(chapterId)
+                .chapterId(branch.id())
                 .ownerUserId(ownerUserId)
-                .familyCode(generateFamilyCode())
+                .familyCode(generateFamilyCode(request.samaj(), branch.city()))
                 .headFirstName(request.headFirstName())
                 .headMiddleName(request.headMiddleName())
                 .headLastName(request.headLastName())
@@ -101,7 +117,14 @@ class FamilyServiceImpl implements FamilyService {
                 .willingToContribute(request.willingToContribute())
                 .build();
         Family saved = familyRepository.save(family);
-        return toDto(saved, branchClient.getBranch(chapterId).orElse(null));
+        // Best-effort: syncs the owner's own account to the same chapter their new family just
+        // resolved to, so the account's JWT chapter_id claim (used by every other service's
+        // scoping) is correct too, not just this family row. See UserClient's javadoc for why a
+        // failure here doesn't fail the whole request - the family above is already correct.
+        if (ownerUserId != null) {
+            userClient.updateOwnChapter(branch.id());
+        }
+        return toDto(saved, branch);
     }
 
     @Override
@@ -109,6 +132,45 @@ class FamilyServiceImpl implements FamilyService {
     public FamilyDto getFamily(FamilyAccessScope scope, UUID familyId) {
         Family family = findAuthorized(scope, familyId);
         return toDto(family, branchClient.getBranch(family.getChapterId()).orElse(null));
+    }
+
+    @Override
+    public FamilyDto updateFamily(FamilyAccessScope scope, UUID familyId, UpdateFamilyRequest request) {
+        Family family = findAuthorized(scope, familyId);
+
+        // Skips the uniqueness check entirely when the number is unchanged - existsByMobileNumber
+        // would otherwise always find this same family's own row and reject every edit.
+        if (!request.mobileNumber().equals(family.getMobileNumber())
+                && familyRepository.existsByMobileNumber(request.mobileNumber())) {
+            throw new IllegalArgumentException(
+                    "A family is already registered with mobile number " + request.mobileNumber());
+        }
+
+        family.setHeadFirstName(request.headFirstName());
+        family.setHeadMiddleName(request.headMiddleName());
+        family.setHeadLastName(request.headLastName());
+        family.setHeadOfFamilyName(
+                buildHeadOfFamilyName(request.headFirstName(), request.headMiddleName(), request.headLastName()));
+        family.setMobileNumber(request.mobileNumber());
+        family.setEmail(request.email());
+
+        // Only re-resolves the chapter if the location actually changed - re-running this on every
+        // edit would be a needless cross-service call, and BranchClient#resolveOrCreateChapter
+        // deliberately doesn't degrade on failure (see its javadoc), so it shouldn't run at all
+        // unless something is actually changing.
+        boolean locationChanged = !request.district().equalsIgnoreCase(family.getDistrict())
+                || !request.state().equalsIgnoreCase(family.getState());
+        family.setCountry(request.country());
+        family.setState(request.state());
+        family.setDistrict(request.district());
+        family.setCity(request.district());
+        if (locationChanged) {
+            BranchSummaryDto chapter = branchClient.resolveOrCreateChapter(request.district(), request.state());
+            family.setChapterId(chapter.id());
+        }
+
+        Family saved = familyRepository.save(family);
+        return toDto(saved, branchClient.getBranch(saved.getChapterId()).orElse(null));
     }
 
     @Override
@@ -304,15 +366,32 @@ class FamilyServiceImpl implements FamilyService {
                 familyPhotoStorage.exists(family.getId()), family.getOwnerUserId(), family.getCreatedAt());
     }
 
-    // 36^8 (~2.8 trillion combinations) makes a collision astronomically unlikely at any scale
-    // this system will reach, so a single attempt (no retry-on-collision loop) is a deliberate
-    // simplicity choice, not an oversight.
-    private String generateFamilyCode() {
-        StringBuilder code = new StringBuilder("FAM-");
-        for (int i = 0; i < FAMILY_CODE_LENGTH; i++) {
-            code.append(FAMILY_CODE_ALPHABET.charAt(FAMILY_CODE_RANDOM.nextInt(FAMILY_CODE_ALPHABET.length())));
+    // Format: [SocietyCode]-[CityCode]-[Sequence], e.g. "AGR-PUN-000001". SocietyCode comes from
+    // the family's samaj (AGRAWAL -> AGR, OTHER -> OTH), CityCode from the city of the chapter the
+    // family is registering under (not the family's own free-text address city, which the
+    // registrant types and can't be relied on to normalize consistently). Sequence resets per
+    // (SocietyCode, CityCode) pair and is handed out atomically by FamilyCodeSequenceRepository, so
+    // the composed code can never collide with another society/city's codes and can't race with a
+    // concurrent registration in the same society+city.
+    private String generateFamilyCode(Samaj samaj, String city) {
+        String societyCode = deriveCodeSegment(samaj != null ? samaj.name() : null);
+        String cityCode = deriveCodeSegment(city);
+        int sequence = familyCodeSequenceRepository.nextSequence(societyCode, cityCode);
+        return societyCode + "-" + cityCode + "-" + String.format("%06d", sequence);
+    }
+
+    // First 3 letters (non-letters stripped first), uppercased; short-padded with 'X' so the code
+    // segment is always exactly 3 characters even for an unusually short source value.
+    private static String deriveCodeSegment(String source) {
+        if (source == null) {
+            return UNKNOWN_CODE_SEGMENT;
         }
-        return code.toString();
+        String lettersOnly = source.replaceAll("[^A-Za-z]", "").toUpperCase();
+        if (lettersOnly.isEmpty()) {
+            return UNKNOWN_CODE_SEGMENT;
+        }
+        String segment = lettersOnly.length() >= 3 ? lettersOnly.substring(0, 3) : lettersOnly;
+        return String.format("%-3s", segment).replace(' ', 'X');
     }
 
     private FamilyMemberDto toDto(FamilyMember member) {
